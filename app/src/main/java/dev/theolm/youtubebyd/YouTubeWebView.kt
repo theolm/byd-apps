@@ -52,6 +52,7 @@ internal fun YouTubeWebView(
     }
     
     // Callbacks for fullscreen handling
+    @Suppress("UNUSED_VALUE")
     val fullscreenCallbacks = remember {
         object : FullscreenCallbacks {
             override fun onEnterFullscreen(

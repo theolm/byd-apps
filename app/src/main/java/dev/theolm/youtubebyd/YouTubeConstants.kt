@@ -9,12 +9,7 @@ internal object YouTubeConstants {
      * YouTube mobile website URL
      */
     const val YOUTUBE_URL = "https://www.youtube.com"
-    
-    /**
-     * Chrome mobile user agent for compatibility
-     */
-    const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-    
+
     /**
      * HTTPS scheme prefix for URL validation
      */

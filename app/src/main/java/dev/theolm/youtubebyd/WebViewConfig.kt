@@ -20,7 +20,6 @@ internal object WebViewConfig {
             loadsImagesAutomatically = true
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true
             cacheMode = WebSettings.LOAD_DEFAULT
             mediaPlaybackRequiresUserGesture = false
             javaScriptCanOpenWindowsAutomatically = true
