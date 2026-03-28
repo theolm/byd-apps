@@ -47,7 +47,6 @@ fun YouTubeBYDTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
         content = content
     )
 }
