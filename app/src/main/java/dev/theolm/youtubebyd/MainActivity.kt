@@ -3,14 +3,13 @@ package dev.theolm.youtubebyd
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
-import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,14 +19,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.theolm.youtubebyd.ui.theme.YouTubeBYDTheme
 
 class MainActivity : ComponentActivity() {
@@ -35,12 +39,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
-        // Enable fullscreen immersive mode
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-        )
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         
         setContent {
             YouTubeBYDTheme {
@@ -53,24 +55,43 @@ class MainActivity : ComponentActivity() {
 @SuppressLint("SetJavaScriptEnabled", "StaticFieldLeak")
 @Composable
 fun YouTubeWebView() {
+    val isSystemDark = isSystemInDarkTheme()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var customView by remember { mutableStateOf<View?>(null) }
     var customViewCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var isFullscreen by remember { mutableStateOf(false) }
     
-    // Handle back button
+    // Inject theme JavaScript whenever system theme changes
+    LaunchedEffect(isSystemDark) {
+        webView?.let { wv ->
+            val jsCode = if (isSystemDark) {
+                """
+                    (function() {
+                        document.documentElement.setAttribute('dark', '');
+                        document.documentElement.style.colorScheme = 'dark';
+                    })();
+                """.trimIndent()
+            } else {
+                """
+                    (function() {
+                        document.documentElement.removeAttribute('dark');
+                        document.documentElement.style.colorScheme = 'light';
+                    })();
+                """.trimIndent()
+            }
+            wv.evaluateJavascript(jsCode, null)
+        }
+    }
+    
     BackHandler {
         when {
             isFullscreen && customViewCallback != null -> {
-                // Exit fullscreen first
                 customViewCallback?.onCustomViewHidden()
             }
             webView?.canGoBack() == true -> {
-                // Go back in WebView history
                 webView?.goBack()
             }
             else -> {
-                // Exit app
                 (webView?.context as? ComponentActivity)?.finish()
             }
         }
@@ -103,7 +124,6 @@ fun YouTubeWebView() {
                         setSupportMultipleWindows(true)
                     }
                     
-                    // Enable cookies
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     
@@ -114,11 +134,8 @@ fun YouTubeWebView() {
                                 customView = view
                                 customViewCallback = callback
                                 isFullscreen = true
-                                
-                                // Hide WebView and show custom view
                                 this@apply.visibility = View.GONE
                                 
-                                // Add custom view to container
                                 (this@apply.parent as? ViewGroup)?.addView(
                                     view,
                                     FrameLayout.LayoutParams(
@@ -132,12 +149,10 @@ fun YouTubeWebView() {
                         override fun onHideCustomView() {
                             super.onHideCustomView()
                             
-                            // Remove custom view from container
                             customView?.let { view ->
                                 (view.parent as? ViewGroup)?.removeView(view)
                             }
                             
-                            // Show WebView again
                             this@apply.visibility = View.VISIBLE
                             
                             customView = null
@@ -147,37 +162,57 @@ fun YouTubeWebView() {
                     }
                     
                     webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            // Inject theme after page loads
+                            val jsCode = if (isSystemDark) {
+                                """
+                                    (function() {
+                                        document.documentElement.setAttribute('dark', '');
+                                        document.documentElement.style.colorScheme = 'dark';
+                                    })();
+                                """.trimIndent()
+                            } else {
+                                """
+                                    (function() {
+                                        document.documentElement.removeAttribute('dark');
+                                        document.documentElement.style.colorScheme = 'light';
+                                    })();
+                                """.trimIndent()
+                            }
+                            view?.evaluateJavascript(jsCode, null)
+                        }
+                        
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?
                         ): Boolean {
                             val url = request?.url?.toString() ?: return false
-                            // Only allow HTTPS URLs, block HTTP and all other schemes
                             return !url.startsWith("https://")
                         }
                         
                         override fun onReceivedError(
                             view: WebView?,
-                            errorCode: Int,
-                            description: String?,
-                            failingUrl: String?
+                            request: WebResourceRequest?,
+                            error: WebResourceError?
                         ) {
-                            super.onReceivedError(view, errorCode, description, failingUrl)
-                            Toast.makeText(context, "Error: $errorCode - $description", Toast.LENGTH_LONG).show()
+                            super.onReceivedError(view, request, error)
+                            val errorMessage = error?.description?.toString() ?: "Unknown error"
+                            Toast.makeText(context, "Error: $errorMessage", Toast.LENGTH_LONG).show()
                         }
                     }
                     
                     setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
-                        val request = DownloadManager.Request(Uri.parse(url)).apply {
+                        val request = DownloadManager.Request(url.toUri()).apply {
                             setMimeType(mimeType)
                             addRequestHeader("cookie", CookieManager.getInstance().getCookie(url))
                             addRequestHeader("User-Agent", userAgent)
                             setDescription("Downloading...")
-                            setTitle(Uri.parse(url).lastPathSegment)
+                            setTitle(url.toUri().lastPathSegment)
                             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                             setDestinationInExternalPublicDir(
                                 Environment.DIRECTORY_DOWNLOADS,
-                                Uri.parse(url).lastPathSegment
+                                url.toUri().lastPathSegment
                             )
                         }
                         
