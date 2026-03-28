@@ -11,7 +11,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,10 +40,11 @@ internal fun YouTubeWebView(
     var customViewCallback: WebChromeClient.CustomViewCallback? by remember { mutableStateOf(null) }
     var isFullscreen by remember { mutableStateOf(false) }
     
-    // Use rememberUpdatedState to always have latest values in callbacks
+    // Use rememberUpdatedState to always have latest values
     val currentWebView by rememberUpdatedState(webView)
     val currentCustomViewCallback by rememberUpdatedState(customViewCallback)
     val currentIsFullscreen by rememberUpdatedState(isFullscreen)
+    val currentIsSystemDark by rememberUpdatedState(isSystemDark)
     
     // Derived state for back button handling
     val canGoBack by remember(currentWebView) {
@@ -63,7 +63,6 @@ internal fun YouTubeWebView(
                 customViewCallback = callback
                 isFullscreen = true
                 
-                // Add custom view to parent
                 (webView?.parent as? ViewGroup)?.addView(
                     view,
                     FrameLayout.LayoutParams(
@@ -87,22 +86,9 @@ internal fun YouTubeWebView(
         }
     }
     
-    // Theme injection callback
-    val themeInjector = remember(isSystemDark) {
-        object : ThemeInjector {
-            override fun injectTheme(targetWebView: WebView?) {
-                targetWebView?.evaluateJavascript(
-                    if (isSystemDark) YouTubeConstants.DARK_MODE_JS 
-                    else YouTubeConstants.LIGHT_MODE_JS,
-                    null
-                )
-            }
-        }
-    }
-    
-    // Inject theme when system theme changes
-    LaunchedEffect(isSystemDark) {
-        currentWebView?.let { themeInjector.injectTheme(it) }
+    // Theme provider that always returns current value
+    val themeProvider = remember {
+        ThemeProvider { currentIsSystemDark }
     }
     
     // Handle back button with priority: exit fullscreen > go back > exit app
@@ -144,7 +130,7 @@ internal fun YouTubeWebView(
                     applyYouTubeSettings()
                     
                     webChromeClient = YouTubeWebChromeClient(fullscreenCallbacks)
-                    webViewClient = YouTubeWebViewClient(factoryContext, themeInjector)
+                    webViewClient = YouTubeWebViewClient(factoryContext, themeProvider)
                     setDownloadListener(YouTubeDownloadHandler(factoryContext))
                     
                     loadUrl(YouTubeConstants.YOUTUBE_URL)

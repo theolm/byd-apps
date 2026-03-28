@@ -1,7 +1,6 @@
 package dev.theolm.youtubebyd
 
 import android.webkit.WebChromeClient
-import android.webkit.WebView
 
 /**
  * Callbacks for fullscreen video handling

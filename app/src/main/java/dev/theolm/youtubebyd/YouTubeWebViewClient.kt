@@ -8,10 +8,10 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 
 /**
- * Callback for theme injection when page finishes loading
+ * Callback to get the current theme state
  */
-internal interface ThemeInjector {
-    fun injectTheme(webView: WebView?)
+internal fun interface ThemeProvider {
+    fun isDarkTheme(): Boolean
 }
 
 /**
@@ -19,12 +19,21 @@ internal interface ThemeInjector {
  */
 internal class YouTubeWebViewClient(
     private val context: Context,
-    private val themeInjector: ThemeInjector
+    private val themeProvider: ThemeProvider
 ) : WebViewClient() {
     
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
-        themeInjector.injectTheme(view)
+        injectTheme(view)
+    }
+    
+    private fun injectTheme(view: WebView?) {
+        val jsCode = if (themeProvider.isDarkTheme()) {
+            YouTubeConstants.DARK_MODE_JS
+        } else {
+            YouTubeConstants.LIGHT_MODE_JS
+        }
+        view?.evaluateJavascript(jsCode, null)
     }
     
     override fun shouldOverrideUrlLoading(
@@ -32,7 +41,6 @@ internal class YouTubeWebViewClient(
         request: WebResourceRequest?
     ): Boolean {
         val url = request?.url?.toString() ?: return false
-        // Only allow HTTPS URLs, block HTTP and all other schemes
         return !url.startsWith(YouTubeConstants.HTTPS_SCHEME)
     }
     
