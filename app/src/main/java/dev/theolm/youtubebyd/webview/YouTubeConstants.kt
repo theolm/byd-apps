@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.webview
 
 /**
  * Constants used throughout the YouTube WebView application

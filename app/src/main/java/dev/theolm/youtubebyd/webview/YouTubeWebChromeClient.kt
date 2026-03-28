@@ -1,12 +1,13 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.webview
 
+import android.view.View
 import android.webkit.WebChromeClient
 
 /**
  * Callbacks for fullscreen video handling
  */
 internal interface FullscreenCallbacks {
-    fun onEnterFullscreen(view: android.view.View, callback: WebChromeClient.CustomViewCallback)
+    fun onEnterFullscreen(view: View, callback: WebChromeClient.CustomViewCallback)
     fun onExitFullscreen()
 }
 
@@ -17,7 +18,7 @@ internal class YouTubeWebChromeClient(
     private val fullscreenCallbacks: FullscreenCallbacks
 ) : WebChromeClient() {
     
-    override fun onShowCustomView(view: android.view.View?, callback: CustomViewCallback?) {
+    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
         super.onShowCustomView(view, callback)
         if (view != null && callback != null) {
             fullscreenCallbacks.onEnterFullscreen(view, callback)

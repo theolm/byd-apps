@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.webview
 
 import android.annotation.SuppressLint
 import android.view.View

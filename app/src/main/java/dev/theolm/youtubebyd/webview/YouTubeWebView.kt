@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.webview
 
 import android.annotation.SuppressLint
 import android.view.View
@@ -20,7 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import dev.theolm.youtubebyd.WebViewConfig.applyYouTubeSettings
+import dev.theolm.youtubebyd.webview.WebViewConfig.applyYouTubeSettings
 
 /**
  * A WebView composable that loads YouTube with fullscreen support and theme synchronization

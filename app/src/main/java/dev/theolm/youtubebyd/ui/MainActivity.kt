@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -7,27 +7,28 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import dev.theolm.youtubebyd.webview.YouTubeWebView
 import dev.theolm.youtubebyd.ui.theme.YouTubeBYDTheme
 
 /**
  * Main entry point for the YouTube BYD application
  */
 class MainActivity : ComponentActivity() {
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setupImmersiveMode()
-        
+
         setContent {
             val isSystemDark = isSystemInDarkTheme()
-            
+
             YouTubeBYDTheme(darkTheme = isSystemDark) {
                 YouTubeWebView(isSystemDark = isSystemDark)
             }
         }
     }
-    
+
     /**
      * Configures the window for edge-to-edge immersive experience
      */

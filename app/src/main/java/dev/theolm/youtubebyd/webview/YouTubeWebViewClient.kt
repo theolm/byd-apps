@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd
+package dev.theolm.youtubebyd.webview
 
 import android.content.Context
 import android.webkit.WebResourceError
