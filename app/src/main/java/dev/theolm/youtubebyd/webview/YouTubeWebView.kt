@@ -20,37 +20,46 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.theolm.youtubebyd.webview.WebViewConfig.applyYouTubeSettings
 
 /**
  * A WebView composable that loads YouTube with fullscreen support and theme synchronization
  *
+ * @param activity The ComponentActivity for system UI control
  * @param isSystemDark Whether the system is currently in dark mode
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun YouTubeWebView(
+    activity: ComponentActivity,
     isSystemDark: Boolean
 ) {
     val context = LocalContext.current
-    
+
     // State for managing WebView and fullscreen
     var webView: WebView? by remember { mutableStateOf(null) }
     var customView: View? by remember { mutableStateOf(null) }
     var customViewCallback: WebChromeClient.CustomViewCallback? by remember { mutableStateOf(null) }
     var isFullscreen by remember { mutableStateOf(false) }
-    
+
     // Use rememberUpdatedState to always have latest values
     val currentWebView by rememberUpdatedState(webView)
     val currentCustomViewCallback by rememberUpdatedState(customViewCallback)
     val currentIsFullscreen by rememberUpdatedState(isFullscreen)
     val currentIsSystemDark by rememberUpdatedState(isSystemDark)
-    
+
+    // Window insets controller for system UI
+    val windowInsetsController = remember(activity) {
+        WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+    }
+
     // Derived state for back button handling
     val canGoBack by remember(currentWebView) {
         derivedStateOf { currentWebView?.canGoBack() == true }
     }
-    
+
     // Callbacks for fullscreen handling
     @Suppress("UNUSED_VALUE")
     val fullscreenCallbacks = remember {
@@ -63,7 +72,13 @@ internal fun YouTubeWebView(
                 customView = view
                 customViewCallback = callback
                 isFullscreen = true
-                
+
+                // Hide system bars for immersive fullscreen
+                windowInsetsController.apply {
+                    hide(WindowInsetsCompat.Type.systemBars())
+                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+
                 (webView?.parent as? ViewGroup)?.addView(
                     view,
                     FrameLayout.LayoutParams(
@@ -72,14 +87,17 @@ internal fun YouTubeWebView(
                     )
                 )
             }
-            
+
             override fun onExitFullscreen() {
                 customView?.let { view ->
                     (view.parent as? ViewGroup)?.removeView(view)
                 }
-                
+
                 webView?.visibility = View.VISIBLE
-                
+
+                // Show system bars when exiting fullscreen
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+
                 customView = null
                 customViewCallback = null
                 isFullscreen = false
