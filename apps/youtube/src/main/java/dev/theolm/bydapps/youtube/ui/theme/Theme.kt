@@ -10,6 +10,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import dev.theolm.core.ThemeMode
 
 private val DarkColorScheme = darkColorScheme(
     primary = YouTubeRed,
@@ -31,9 +32,17 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun YouTubeTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit
 ) {
+    val isSystemInDarkTheme = isSystemInDarkTheme()
+    
+    val darkTheme = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme
+    }
+    
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
     

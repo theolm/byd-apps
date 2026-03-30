@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
-            YouTubeTheme {
+            YouTubeTheme(themeMode = YouTubeConfig.themeMode) {
                 BaseWebView(
                     activity = this,
                     configuration = YouTubeConfig,

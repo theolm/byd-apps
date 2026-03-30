@@ -56,9 +56,9 @@ fun BaseWebView(
     }
 
     // Callbacks for fullscreen handling
-    @Suppress("UNUSED_VALUE")
     val fullscreenCallbacks = remember {
         object : FullscreenCallbacks {
+            @Suppress("UNUSED_VALUE")
             override fun onEnterFullscreen(
                 view: View,
                 callback: WebChromeClient.CustomViewCallback
@@ -78,6 +78,7 @@ fun BaseWebView(
                 )
             }
 
+            @Suppress("UNUSED_VALUE")
             override fun onExitFullscreen() {
                 customView?.let { view ->
                     (view.parent as? ViewGroup)?.removeView(view)
@@ -132,7 +133,7 @@ fun BaseWebView(
                     applySettings()
 
                     webChromeClient = WebViewChromeClient(fullscreenCallbacks)
-                    webViewClient = WebViewClient(factoryContext)
+                    webViewClient = WebViewClient(factoryContext, configuration)
                     
                     if (configuration.enableDownloads) {
                         setDownloadListener(WebViewDownloadHandler(factoryContext))
