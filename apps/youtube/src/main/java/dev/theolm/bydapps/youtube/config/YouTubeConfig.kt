@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd.youtube.config
+package dev.theolm.bydapps.youtube.config
 
 import dev.theolm.core.WebViewConfiguration
 

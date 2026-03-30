@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "YouTube BYD"
+rootProject.name = "BYD Apps"
 include(":core")
 include(":apps:youtube")

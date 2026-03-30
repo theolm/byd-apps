@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd.youtube
+package dev.theolm.bydapps.youtube
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -7,8 +7,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.theolm.core.webview.BaseWebView
-import dev.theolm.youtubebyd.youtube.config.YouTubeConfig
-import dev.theolm.youtubebyd.youtube.ui.theme.YouTubeTheme
+import dev.theolm.bydapps.youtube.config.YouTubeConfig
+import dev.theolm.bydapps.youtube.ui.theme.YouTubeTheme
 
 /**
  * Main entry point for the YouTube application

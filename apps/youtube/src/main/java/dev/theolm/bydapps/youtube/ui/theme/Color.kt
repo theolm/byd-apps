@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd.youtube.ui.theme
+package dev.theolm.bydapps.youtube.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

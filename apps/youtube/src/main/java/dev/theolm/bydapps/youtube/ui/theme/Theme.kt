@@ -1,4 +1,4 @@
-package dev.theolm.youtubebyd.youtube.ui.theme
+package dev.theolm.bydapps.youtube.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme

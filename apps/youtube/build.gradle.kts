@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.theolm.youtubebyd.youtube"
+    namespace = "dev.theolm.bydapps.youtube"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.theolm.youtubebyd.youtube"
+        applicationId = "dev.theolm.bydapps.youtube"
         minSdk = 29
         //noinspection OldTargetApi
         targetSdk = 34
