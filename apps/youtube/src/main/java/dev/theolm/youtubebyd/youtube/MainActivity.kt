@@ -3,7 +3,6 @@ package dev.theolm.youtubebyd.youtube
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -23,13 +22,10 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
-            val isSystemDark = isSystemInDarkTheme()
-
-            YouTubeTheme(darkTheme = isSystemDark) {
+            YouTubeTheme {
                 BaseWebView(
                     activity = this,
                     configuration = YouTubeConfig,
-                    isSystemDark = isSystemDark,
                     onFullscreenChanged = { isFullscreen ->
                         handleFullscreenChange(isFullscreen)
                     },
