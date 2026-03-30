@@ -58,7 +58,6 @@ fun BaseWebView(
     // Callbacks for fullscreen handling
     val fullscreenCallbacks = remember {
         object : FullscreenCallbacks {
-            @Suppress("UNUSED_VALUE")
             override fun onEnterFullscreen(
                 view: View,
                 callback: WebChromeClient.CustomViewCallback
@@ -78,7 +77,6 @@ fun BaseWebView(
                 )
             }
 
-            @Suppress("UNUSED_VALUE")
             override fun onExitFullscreen() {
                 customView?.let { view ->
                     (view.parent as? ViewGroup)?.removeView(view)
