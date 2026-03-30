@@ -1,57 +1,73 @@
-# YouTube for BYD 🚗
+# WebView Apps for BYD 🚗
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0%2B-blue.svg)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7%2B-green.svg)](https://developer.android.com/jetpack/compose)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> YouTube client designed specifically for **BYD vehicles** — works without Google Play Services!
+> A collection of web-based apps for **BYD vehicles** — works without Google Play Services!
 
 ## What is this?
 
-This is a lightweight YouTube client built for **BYD vehicle infotainment systems**. BYD cars run Android but don't include Google Play Services, which means no YouTube app and no easy way to install it.
+This repository contains Android apps designed specifically for **BYD vehicle infotainment systems**. BYD cars run Android but don't include Google Play Services, making it impossible to use official Google apps like YouTube, Netflix, or Spotify.
 
-This app wraps YouTube's mobile website in a native Android container using WebView, giving you a proper app experience without needing Google services.
+This project solves that problem by wrapping web-based services in native Android apps using WebView. Each app provides a proper native experience while remaining lightweight and simple to install.
 
-**Why use this instead of the browser?**
+## Available Apps
 
-- 🔐 **Stay logged in** — No more signing in every time
-- 🎬 **True fullscreen** — Videos expand to fill your entire screen
-- 🌓 **Follows your theme** — Automatically switches between light and dark mode with your system
-- 📥 **Download support** — Grab videos when YouTube allows it
-- 🔙 **Smart navigation** — Back button goes back in history, doesn't close the app
-- 🎵 **Background audio** — Keep listening when you switch apps
+| App                     | Description                                                        | Status   |
+| ----------------------- | ------------------------------------------------------------------ | -------- |
+| [YouTube](apps/youtube) | Full YouTube experience with downloads, fullscreen, and theme sync | ✅ Ready |
 
-## Why This App Exists
+## Why This Project Exists
 
 **BYD** (Build Your Dreams) is one of the world's largest electric vehicle manufacturers. Their vehicles run Android-based infotainment systems, but **they don't include Google Play Services** due to regional restrictions.
 
 This means:
 
 - ❌ No Google Play Store
-- ❌ No official YouTube app
-- ❌ No easy way to install Google apps
+- ❌ No official YouTube/Netflix/Spotify apps
+- ❌ Complex workarounds needed to install apps
 
 ### The Solution
 
-This app provides a **simple, native YouTube experience** for your BYD vehicle's media center. Just sideload the APK and you have full YouTube functionality without:
+Just sideload the APK files directly to your BYD media center. No rooting, no microG, no complex setup. Each app is:
 
-- Rooting your car's system
-- Installing complex Google service workarounds (microG)
-- Dealing with compatibility issues
+- **Lightweight** — Just wraps the web service with native features
+- **Self-contained** — No dependencies on Google services
+- **Easy to install** — Simple APK sideloading
 
-**Note:** While designed for BYD vehicles, this app works on any Android device running Android 10+.
+**Note:** While designed for BYD vehicles, these apps work on any Android device running Android 10+.
 
-## Features
+## Architecture
 
-| Feature             | Status                                        |
-| ------------------- | --------------------------------------------- |
-| Persistent Login    | ✅ Cookie-based, survives app restarts        |
-| Fullscreen Video    | ✅ True fullscreen with hardware acceleration |
-| System Theme Sync   | ✅ Light/Dark mode matches your Android theme |
-| Downloads           | ✅ Uses Android's DownloadManager             |
-| Back Navigation     | ✅ Smart back button handling                 |
-| Background Playback | ✅ Audio continues in background              |
-| No External Browser | ✅ All links stay in-app                      |
+This project uses a modular architecture with shared core components:
+
+```
+YouTubeBYD/
+├── core/                    # Shared library (WebView wrapper, downloads, etc.)
+├── apps/
+│   └── youtube/            # Individual app modules
+│       ├── src/            # App-specific code and resources
+│       └── build.gradle    # App build configuration
+└── README.md               # This file
+```
+
+### Core Module
+
+The `:core` module provides reusable components for all apps:
+
+- **BaseWebView** — Configurable WebView composable with fullscreen support
+- **WebViewClient** — URL handling and JavaScript injection
+- **WebViewChromeClient** — Fullscreen video handling
+- **DownloadHandler** — File download management
+- **ThemeProvider** — System theme synchronization
+
+Each app module:
+
+- Implements its own configuration (URL, features, theme)
+- Has its own app icon and branding
+- Can be built independently
+- Produces a separate APK
 
 ## Installation
 
@@ -68,84 +84,95 @@ This app provides a **simple, native YouTube experience** for your BYD vehicle's
 
    - Open the project folder
    - Let Gradle sync
-   - Select your device/emulator
+   - Select the app module you want to build (e.g., `:apps:youtube`)
 
-3. **Build and Run**
-   - Click the ▶️ Run button (or `Shift+F10`)
-   - APK will be generated at `app/build/outputs/apk/debug/`
+3. **Build the APK**
+
+   ```bash
+   # Build specific app
+   ./gradlew :apps:youtube:assembleDebug
+
+   # Or build all apps
+   ./gradlew assembleDebug
+   ```
+
+4. **Install on your BYD**
+   - Enable "Unknown Sources" in settings
+   - Copy APK to USB drive
+   - Install via file manager
 
 ### Requirements
 
 - Android 10 (API 29) or higher
-- Internet connection (obviously)
+- Internet connection
+
+## Creating New Apps
+
+Want to add a new app (e.g., Netflix, Spotify)? Follow these steps:
+
+1. **Create app folder**
+
+   ```bash
+   mkdir apps/newapp
+   ```
+
+2. **Copy youtube app as template**
+
+   ```bash
+   cp -r apps/youtube/* apps/newapp/
+   ```
+
+3. **Update configuration**
+
+   - Edit `apps/newapp/build.gradle.kts`: change `applicationId` and `namespace`
+   - Edit `apps/newapp/src/main/java/.../config/NewAppConfig.kt`: set URL and features
+   - Create your theme in `apps/newapp/src/main/java/.../ui/theme/`
+   - Replace icons in `apps/newapp/src/main/res/mipmap-*/`
+
+4. **Add to settings.gradle.kts**
+
+   ```kotlin
+   include(":apps:newapp")
+   ```
+
+5. **Build and test**
+   ```bash
+   ./gradlew :apps:newapp:assembleDebug
+   ```
+
+See [apps/youtube](apps/youtube) for a complete working example.
 
 ## Technical Highlights
 
-This isn't just a basic WebView slapped together. Here's what makes it tick:
-
 - **Jetpack Compose** — Modern declarative UI
-- **Custom WebChromeClient** — Handles fullscreen video properly
-- **JavaScript Injection** — Syncs YouTube's theme with your Android system theme
-- **State Management** — Proper Compose state handling with `rememberUpdatedState` and `derivedStateOf`
-- **Clean Architecture** — Separated into focused modules (Config, Clients, Handlers)
-- **Edge-to-Edge** — Transparent status/navigation bars for immersive experience
-
-## Project Structure
-
-```
-app/src/main/java/dev/theolm/youtubebyd/
-├── MainActivity.kt              # Entry point, sets up edge-to-edge
-├── YouTubeWebView.kt            # Main composable with state management
-├── YouTubeConstants.kt          # URLs, user agents, JS snippets
-├── WebViewConfig.kt             # WebView settings configuration
-├── YouTubeWebChromeClient.kt    # Fullscreen video handling
-├── YouTubeWebViewClient.kt      # URL loading and error handling
-├── YouTubeDownloadHandler.kt    # File download management
-└── ui/theme/                    # YouTube-inspired color scheme
-```
-
-## How It Works
-
-### Theme Synchronization
-
-The app injects JavaScript into YouTube to toggle dark mode based on your system preference:
-
-```javascript
-// When system is in dark mode:
-document.documentElement.setAttribute("dark", "");
-document.documentElement.style.colorScheme = "dark";
-
-// When system is in light mode:
-document.documentElement.removeAttribute("dark");
-document.documentElement.style.colorScheme = "light";
-```
-
-This happens automatically whenever you change your system's theme.
-
-### Fullscreen Handling
-
-YouTube's fullscreen button triggers `WebChromeClient.onShowCustomView()`, which we intercept to show the video view over the WebView. The back button smartly exits fullscreen first, then navigates back, then exits the app.
-
-### Caching
-
-WebView uses `LOAD_DEFAULT` cache mode, meaning:
-
-- Static resources (JS, CSS, images) are cached locally
-- Only new/changed content is downloaded
-- Your login persists via cookies
-- **Note:** Videos are streamed, not cached
+- **Modular Architecture** — Shared core, independent apps
+- **JavaScript Injection** — Syncs web app themes with Android system theme
+- **Fullscreen Support** — True fullscreen video with hardware acceleration
+- **State Management** — Proper Compose state handling
+- **Clean Code** — Follows Android best practices
 
 ## Roadmap
 
-- [ ] Picture-in-Picture mode
-- [ ] Custom playback speed controls
-- [ ] SponsorBlock integration
-- [ ] Optional ad blocking
-- [ ] Offline playlist support
+### Core Features
+
+- [x] Base WebView wrapper
+- [x] Fullscreen video support
+- [x] Theme synchronization
+- [x] Download handling
+- [ ] Offline support
+- [ ] Ad blocking (optional)
+
+### New Apps
+
+- [x] YouTube
+- [ ] Netflix
+- [ ] Spotify
+- [ ] Disney+
+- [ ] Amazon Prime Video
 
 ## Contributing
 
-PRs welcome! This is a small project, so keep it simple:
+PRs welcome! This is a community project for BYD owners.
 
 1. Fork it
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -183,6 +210,6 @@ SOFTWARE.
 
 ---
 
-**Not affiliated with Google or YouTube.** This is an unofficial wrapper for personal use. YouTube's terms of service still apply.
+**Not affiliated with Google, YouTube, BYD, or any streaming services.** These are unofficial wrappers for personal use. Service terms still apply.
 
-Built with ☕ and Kotlin Compose specifically for BYD car owners who just want to watch YouTube without the Google Play Services hassle.
+Built with ☕ and Kotlin Compose for BYD owners who just want to enjoy their favorite content in their cars.
