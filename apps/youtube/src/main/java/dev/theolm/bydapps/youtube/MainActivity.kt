@@ -1,6 +1,8 @@
 package dev.theolm.bydapps.youtube
 
 import android.os.Bundle
+import android.view.KeyEvent
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
@@ -15,6 +17,8 @@ import dev.theolm.bydapps.youtube.ui.theme.YouTubeTheme
  */
 class MainActivity : ComponentActivity() {
 
+    private var webView: WebView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -26,6 +30,7 @@ class MainActivity : ComponentActivity() {
                 BaseWebView(
                     activity = this,
                     configuration = YouTubeConfig,
+                    onWebViewCreated = { webView = it },
                     onFullscreenChanged = { isFullscreen ->
                         handleFullscreenChange(isFullscreen)
                     },
@@ -35,6 +40,30 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Handles media button events from steering wheel controls
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val handler = YouTubeConfig.mediaButtonHandler
+        handler?.let {
+            when (keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                    webView?.let { handler.onMediaNext(it) }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                    webView?.let { handler.onMediaPrevious(it) }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    webView?.let { handler.onMediaPlayPause(it) }
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     /**

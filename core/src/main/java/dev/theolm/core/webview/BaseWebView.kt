@@ -27,6 +27,7 @@ import dev.theolm.core.webview.WebViewConfig.applySettings
  *
  * @param activity The ComponentActivity for context
  * @param configuration WebView configuration (URL, features, etc.)
+ * @param onWebViewCreated Callback when WebView is created (for external control like media buttons)
  * @param onFullscreenChanged Callback when fullscreen state changes (app handles system UI)
  * @param onBack Callback when back button is pressed and WebView can't go back (app handles exit)
  */
@@ -35,6 +36,7 @@ import dev.theolm.core.webview.WebViewConfig.applySettings
 fun BaseWebView(
     activity: ComponentActivity,
     configuration: WebViewConfiguration,
+    onWebViewCreated: (WebView) -> Unit = {},
     onFullscreenChanged: (Boolean) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
@@ -142,6 +144,9 @@ fun BaseWebView(
 
                 webView = webViewInstance
                 addView(webViewInstance)
+                
+                // Notify that WebView is created
+                onWebViewCreated(webViewInstance)
             }
         },
         modifier = Modifier.fillMaxSize()

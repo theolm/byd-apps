@@ -23,6 +23,12 @@ interface WebViewConfiguration {
      * Default: 0 (no delay)
      */
     val javascriptInjectionDelayMs: Long
+    
+    /**
+     * Handler for media button events (steering wheel controls, headset buttons).
+     * If null, media buttons will not be handled.
+     */
+    val mediaButtonHandler: MediaButtonHandler?
 }
 
 /**

@@ -23,6 +23,11 @@ object YouTubeConfig : WebViewConfiguration {
     override val javascriptInjectionDelayMs = 500L
     
     /**
+     * Media button handler for steering wheel controls
+     */
+    override val mediaButtonHandler = YouTubeMediaHandler()
+    
+    /**
      * JavaScript to force YouTube dark theme based on configuration
      * Sets localStorage PREF value and HTML dark attribute
      */
