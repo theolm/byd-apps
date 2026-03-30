@@ -9,33 +9,11 @@ import android.widget.Toast
 import dev.theolm.core.constants.WebViewConstants
 
 /**
- * Callback to get the current theme state
- */
-fun interface ThemeProvider {
-    fun isDarkTheme(): Boolean
-}
-
-/**
  * Custom WebViewClient for handling URL loading and errors
  */
 class WebViewClient(
-    private val context: Context,
-    private val themeProvider: ThemeProvider
+    private val context: Context
 ) : WebViewClient() {
-    
-    override fun onPageFinished(view: WebView?, url: String?) {
-        super.onPageFinished(view, url)
-        injectTheme(view)
-    }
-    
-    private fun injectTheme(view: WebView?) {
-        val jsCode = if (themeProvider.isDarkTheme()) {
-            WebViewConstants.DARK_MODE_JS
-        } else {
-            WebViewConstants.LIGHT_MODE_JS
-        }
-        view?.evaluateJavascript(jsCode, null)
-    }
     
     override fun shouldOverrideUrlLoading(
         view: WebView?,

@@ -18,17 +18,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.theolm.core.WebViewConfiguration
 import dev.theolm.core.webview.WebViewConfig.applySettings
 
 /**
- * A reusable WebView composable with fullscreen support and theme synchronization
+ * A reusable WebView composable with fullscreen support
  *
  * @param activity The ComponentActivity for context
  * @param configuration WebView configuration (URL, features, etc.)
- * @param isSystemDark Whether the system is currently in dark mode
  * @param onFullscreenChanged Callback when fullscreen state changes (app handles system UI)
  * @param onBack Callback when back button is pressed and WebView can't go back (app handles exit)
  */
@@ -37,7 +35,6 @@ import dev.theolm.core.webview.WebViewConfig.applySettings
 fun BaseWebView(
     activity: ComponentActivity,
     configuration: WebViewConfiguration,
-    isSystemDark: Boolean,
     onFullscreenChanged: (Boolean) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
@@ -52,7 +49,6 @@ fun BaseWebView(
     val currentWebView by rememberUpdatedState(webView)
     val currentCustomViewCallback by rememberUpdatedState(customViewCallback)
     val currentIsFullscreen by rememberUpdatedState(isFullscreen)
-    val currentIsSystemDark by rememberUpdatedState(isSystemDark)
 
     // Derived state for back button handling
     val canGoBack by remember(currentWebView) {
@@ -97,11 +93,6 @@ fun BaseWebView(
         }
     }
 
-    // Theme provider that always returns current value
-    val themeProvider = remember {
-        ThemeProvider { currentIsSystemDark }
-    }
-
     // Handle back button with priority: exit fullscreen > go back > exit app
     BackHandler {
         when {
@@ -141,7 +132,7 @@ fun BaseWebView(
                     applySettings()
 
                     webChromeClient = WebViewChromeClient(fullscreenCallbacks)
-                    webViewClient = WebViewClient(factoryContext, themeProvider)
+                    webViewClient = WebViewClient(factoryContext)
                     
                     if (configuration.enableDownloads) {
                         setDownloadListener(WebViewDownloadHandler(factoryContext))
