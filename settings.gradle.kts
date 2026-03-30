@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "BYD Apps"
 include(":core")
 include(":apps:youtube")
+include(":apps:ytmusic")
