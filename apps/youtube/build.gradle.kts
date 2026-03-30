@@ -14,6 +14,7 @@ android {
     defaultConfig {
         applicationId = "dev.theolm.youtubebyd.youtube"
         minSdk = 29
+        //noinspection OldTargetApi
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"

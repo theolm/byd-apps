@@ -41,7 +41,6 @@ fun BaseWebView(
     onFullscreenChanged: (Boolean) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
-    val context = LocalContext.current
 
     // State for managing WebView and fullscreen
     var webView: WebView? by remember { mutableStateOf(null) }
@@ -49,7 +48,7 @@ fun BaseWebView(
     var customViewCallback: WebChromeClient.CustomViewCallback? by remember { mutableStateOf(null) }
     var isFullscreen by remember { mutableStateOf(false) }
 
-    // Use rememberUpdatedState to always have latest values
+    // Use rememberUpdatedState to always have the latest values
     val currentWebView by rememberUpdatedState(webView)
     val currentCustomViewCallback by rememberUpdatedState(customViewCallback)
     val currentIsFullscreen by rememberUpdatedState(isFullscreen)
@@ -142,7 +141,7 @@ fun BaseWebView(
                     applySettings()
 
                     webChromeClient = WebViewChromeClient(fullscreenCallbacks)
-                    webViewClient = dev.theolm.core.webview.WebViewClient(factoryContext, themeProvider)
+                    webViewClient = WebViewClient(factoryContext, themeProvider)
                     
                     if (configuration.enableDownloads) {
                         setDownloadListener(WebViewDownloadHandler(factoryContext))
