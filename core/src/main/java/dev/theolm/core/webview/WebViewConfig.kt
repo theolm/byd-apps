@@ -6,14 +6,8 @@ import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 
-/**
- * Configuration for WebView settings
- */
 object WebViewConfig {
     
-    /**
-     * Applies standard settings to the WebView
-     */
     @SuppressLint("SetJavaScriptEnabled")
     fun WebView.applySettings() {
         settings.apply {
@@ -25,12 +19,16 @@ object WebViewConfig {
             javaScriptCanOpenWindowsAutomatically = true
             setSupportMultipleWindows(true)
             userAgentString = userAgentString.replace("wv", "")
+            
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            builtInZoomControls = false
+            displayZoomControls = false
+            setSupportZoom(false)
         }
         
-        // Enable hardware acceleration for smooth video playback
         setLayerType(View.LAYER_TYPE_HARDWARE, null)
         
-        // Configure cookies for persistent sign-in
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(this@applySettings, true)

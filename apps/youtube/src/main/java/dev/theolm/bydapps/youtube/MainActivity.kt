@@ -1,5 +1,6 @@
 package dev.theolm.bydapps.youtube
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.webkit.WebView
@@ -10,11 +11,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import dev.theolm.core.webview.BaseWebView
 import dev.theolm.bydapps.youtube.config.YouTubeConfig
+import dev.theolm.bydapps.youtube.service.YouTubePlaybackService
 import dev.theolm.bydapps.youtube.ui.theme.YouTubeTheme
 
-/**
- * Main entry point for the YouTube application
- */
 class MainActivity : ComponentActivity() {
 
     private var webView: WebView? = null
@@ -22,7 +21,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Opt-out of enforced edge-to-edge on SDK 35+
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
@@ -42,9 +40,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Handles media button events from steering wheel controls
-     */
+    override fun onStart() {
+        super.onStart()
+        startService(Intent(this, YouTubePlaybackService::class.java))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webView?.let {
+            YouTubePlaybackService.WebViewHolder.getInstance().webView = it
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val handler = YouTubeConfig.mediaButtonHandler
         handler?.let {
@@ -66,9 +73,6 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    /**
-     * Handles system UI visibility when fullscreen state changes
-     */
     private fun handleFullscreenChange(isFullscreen: Boolean) {
         WindowInsetsControllerCompat(window, window.decorView).apply {
             if (isFullscreen) {

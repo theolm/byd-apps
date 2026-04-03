@@ -37,6 +37,22 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </activity>
+
+        <!-- Media playback service for background audio -->
+        <service
+            android:name="dev.theolm.bydapps.youtube.service.YouTubePlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+        </service>
+
+        <!-- Media button receiver -->
+        <receiver
+            android:name="dev.theolm.bydapps.youtube.receiver.YouTubeMediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
