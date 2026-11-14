@@ -74,7 +74,7 @@ See [docs/emulator.md](docs/emulator.md) for the full command list and limits.
 
 Tags matching `vX.Y.Z` trigger `.github/workflows/release.yml`, which builds
 signed APKs and publishes a GitHub release. The keystore and signing secrets
-are added in the repository settings; see [docs/release.md](docs/release.md).
+are added to the `release` environment; see [docs/release.md](docs/release.md).
 
 ## Compatibility
 

@@ -6,8 +6,8 @@ builds both apps, verifies the APK signatures and publishes a GitHub release.
 
 ## Keystore and secrets
 
-The workflow expects a release keystore at `keystore/release.keystore` and the
-following repository secrets:
+The workflow expects a release keystore supplied through the following
+environment secrets in the `release` environment:
 
 | Secret | Value |
 | --- | --- |
@@ -15,6 +15,11 @@ following repository secrets:
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
 | `ANDROID_KEY_ALIAS` | Key alias |
 | `ANDROID_KEY_PASSWORD` | Key password |
+
+Create the environment in **Settings → Environments** and add the secrets
+there. The `android` job declares `environment: release`, so these values are
+only available to that job; repository-level secrets are not required. Add
+required reviewers in the environment settings when the plan allows it.
 
 Create the keystore once and keep it safe. Losing it means a new signing key
 and a one-time uninstall on every car:
