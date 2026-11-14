@@ -1,119 +1,91 @@
-# WebView Apps for BYD 🚗
+# BYD Apps for YouTube and YT Music
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0%2B-blue.svg)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7%2B-green.svg)](https://developer.android.com/jetpack/compose)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+> **Unofficial project.** Not affiliated with, endorsed by, or sponsored by
+> Google LLC, YouTube, or BYD Company Limited. YouTube and YT Music are
+> trademarks of Google LLC; BYD is a trademark of BYD Company Limited.
 
-> A collection of web-based apps for **BYD vehicles** — works without Google Play Services!
+Two standalone Android apps for BYD DiLink 3 head units. Each app embeds
+Mozilla's **GeckoView** engine, so the current YouTube and YT Music web apps
+render correctly without depending on the car's system WebView.
 
-## What is this?
+| App | Package | APK |
+| --- | --- | --- |
+| **YouTube BYD** | `dev.theolm.bydapps.youtube` | `youtube-release.apk` |
+| **YT Music BYD** | `dev.theolm.bydapps.ytmusic` | `ytmusic-release.apk` |
 
-This repository contains Android apps designed specifically for **BYD vehicle infotainment systems**. BYD cars run Android but don't include Google Play Services, making it impossible to use official Google apps like YouTube, Netflix, or Spotify.
+## Why GeckoView
 
-This project solves that problem by wrapping web-based services in native Android apps using WebView. Each app provides a proper native experience while remaining lightweight and simple to install.
+DiLink 3 runs Android 10 with an old system WebView (often Chromium 74). The
+current YT Music web app breaks on it: oversized guide icons, a tiny player
+bar, 0×0 menus and misplaced sheets. Patching each screen was fragile, so both
+apps now bundle GeckoView 160 and render the site's own layout.
 
-## Available Apps
+Each app keeps:
 
-| App                     | Description                                                        | Status   |
-| ----------------------- | ------------------------------------------------------------------ | -------- |
-| [YouTube](apps/youtube) | Full YouTube experience with downloads, fullscreen, and theme sync | ✅ Ready |
-
-## Why This Project Exists
-
-**BYD** (Build Your Dreams) is one of the world's largest electric vehicle manufacturers. Their vehicles run Android-based infotainment systems, but **they don't include Google Play Services** due to regional restrictions.
-
-This means:
-
-- ❌ No Google Play Store
-- ❌ No official YouTube/Netflix/Spotify apps
-- ❌ Complex workarounds needed to install apps
-
-### The Solution
-
-Just sideload the APK files directly to your BYD media center. No rooting, no microG, no complex setup. Each app is:
-
-- **Lightweight** — Just wraps the web service with native features
-- **Self-contained** — No dependencies on Google services
-- **Easy to install** — Simple APK sideloading
-
-**Note:** While designed for BYD vehicles, these apps work on any Android device running Android 10+.
-
-## Testing without the car
-
-`tools/emu.sh` boots a DiLink 3-sized AVD (1920x1080, 240 dpi, landscape,
-`[0,84][1920,990]` content area) and installs the apps into it. It also sends
-media keys through `MediaSession` and exposes the WebView to Chrome DevTools.
-See [docs/emulator.md](docs/emulator.md).
+- the page at **1x**, with the site's natural layout;
+- a dark color scheme;
+- a native `MediaSession` that forwards steering-wheel next/previous/play/pause
+  to the page's media session;
+- no custom fullscreen handling.
 
 ## Architecture
 
-This project uses a modular architecture with shared core components:
-
 ```
-YouTubeBYD/
-├── core/                    # Shared library (WebView wrapper, downloads, etc.)
-├── apps/
-│   └── youtube/            # Individual app modules
-│       ├── src/            # App-specific code and resources
-│       └── build.gradle    # App build configuration
-└── README.md               # This file
+browser-core/       Shared GeckoView host, MediaSession and window setup
+apps/youtube/       YouTube BYD: start URL, icon and launcher
+apps/ytmusic/       YT Music BYD: start URL, icon and launcher
+tools/emu.sh        DiLink 3 emulator workbench
 ```
 
-### Core Module
+`browser-core` contains `GeckoWebAppActivity`. Each app is a tiny `MainActivity`
+that only supplies its start URL, so both apps stay in sync.
 
-The `:core` module provides reusable components for all apps:
+## Build
 
-- **BaseWebView** — Configurable WebView composable with fullscreen support
-- **WebViewClient** — URL handling and JavaScript injection
-- **WebViewChromeClient** — Fullscreen video handling
-- **DownloadHandler** — File download management
-- **ThemeProvider** — System theme synchronization
+```bash
+./gradlew :apps:youtube:assembleDebug :apps:ytmusic:assembleDebug
+```
 
-Each app module:
+The debug APKs are written to:
 
-- Implements its own configuration (URL, features, theme)
-- Has its own app icon and branding
-- Can be built independently
-- Produces a separate APK
+- `apps/youtube/build/outputs/apk/debug/youtube-debug.apk`
+- `apps/ytmusic/build/outputs/apk/debug/ytmusic-debug.apk`
 
-### New Apps
+Each APK is about **100-110 MB** because it contains the GeckoView engine and
+native libraries for arm64.
 
-- [x] YouTube
-- [ ] Netflix
-- [ ] Spotify
-- [ ] Disney+
-- [ ] Amazon Prime Video
+## Emulator
+
+`tools/emu.sh` boots a DiLink 3-sized AVD (1920×1080, 240 dpi, landscape,
+`[0,84][1920,990]` content area), installs either app, sends media keys and
+takes screenshots:
+
+```bash
+tools/emu.sh setup
+tools/emu.sh start
+tools/emu.sh install youtube
+tools/emu.sh install ytmusic
+tools/emu.sh shot build/screens/app.png
+```
+
+See [docs/emulator.md](docs/emulator.md) for the full command list and limits.
+
+## Release
+
+Tags matching `vX.Y.Z` trigger `.github/workflows/release.yml`, which builds
+signed APKs and publishes a GitHub release. The keystore and signing secrets
+are added in the repository settings; see [docs/release.md](docs/release.md).
+
+## Compatibility
+
+- BYD DiLink 3 head units, Android 10 (API 29) or newer
+- arm64-v8a
+- No Google Play Services required
+- The apps are standalone packages and can be installed side by side
 
 ## License
 
-MIT License — do whatever you want, just don't blame me if something breaks.
-
-```
-MIT License
-
-Copyright (c) 2024 Theo
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-**Not affiliated with Google, YouTube, BYD, or any streaming services.** These are unofficial wrappers for personal use. Service terms still apply.
-
-Built with ☕ and Kotlin Compose for BYD owners who just want to enjoy their favorite content in their cars.
+The original source code is MIT — see [LICENSE](LICENSE). Bundled third-party
+components keep their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Trademarks and brand assets
+are not covered by the MIT license.

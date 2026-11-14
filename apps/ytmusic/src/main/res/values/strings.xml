@@ -1,5 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YT Music BYD</string>
-    <string name="menu_symbol">⋮</string>
-    <string name="menu_description">Track actions</string>
 </resources>

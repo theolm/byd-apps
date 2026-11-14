@@ -28,9 +28,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "BYD Apps"
-include(":core")
-include(":gecko-core")
+include(":browser-core")
 include(":apps:youtube")
 include(":apps:ytmusic")
-include(":apps:gecko-youtube")
-include(":apps:gecko-ytmusic")

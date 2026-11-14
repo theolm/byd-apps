@@ -1,0 +1,262 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: "release-${{ inputs.tag || github.ref_name }}"
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate tag and version
+        id: meta
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' is not valid semver. Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-suffix."
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          LIBS_VERSION="$(sed -n 's/^versionName = "\(.*\)"/\1/p' gradle/libs.versions.toml | head -1)"
+          if [[ "$VERSION" == *-* ]]; then
+            BASE="${VERSION%%-*}"
+            if [[ "$LIBS_VERSION" != "$BASE" ]]; then
+              echo "::error::gradle/libs.versions.toml declares version '$LIBS_VERSION' but the tag targets '$BASE'. Update versionName before tagging."
+              exit 1
+            fi
+          elif [[ "$LIBS_VERSION" != "$VERSION" ]]; then
+            echo "::error::gradle/libs.versions.toml declares version '$LIBS_VERSION' but the tag is '$VERSION'. Update versionName before tagging."
+            exit 1
+          fi
+
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          TAGGED_SHA="$(git rev-parse HEAD)"
+          git fetch origin "$DEFAULT_BRANCH" --quiet
+          if ! git merge-base --is-ancestor "$TAGGED_SHA" "origin/$DEFAULT_BRANCH"; then
+            echo "::error::Tagged commit is not on $DEFAULT_BRANCH."
+            exit 1
+          fi
+
+          PRERELEASE=false
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE=true
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "build_number=$GITHUB_RUN_NUMBER"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+  android:
+    name: Android APKs
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      KEYSTORE_PATH: ${{ github.workspace }}/keystore/release.keystore
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Java
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Cache Gradle
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Check signing secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_PASSWORD KEY_ALIAS; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing signing value $name. See docs/release.md."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Configure signing
+        run: |
+          set -euo pipefail
+          mkdir -p keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > keystore/release.keystore
+
+      - name: Build release APKs
+        run: |
+          ./gradlew :apps:youtube:assembleRelease :apps:ytmusic:assembleRelease \
+            -PversionName="$VERSION" -PversionCode="$BUILD_NUMBER"
+
+      - name: Verify APK signatures
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          for apk in \
+            apps/youtube/build/outputs/apk/release/youtube-release.apk \
+            apps/ytmusic/build/outputs/apk/release/ytmusic-release.apk; do
+            echo "== $apk"
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
+
+      - name: Stage artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp apps/youtube/build/outputs/apk/release/youtube-release.apk \
+            "dist/YouTubeBYD-${VERSION}-android-arm64-v8a.apk"
+          cp apps/ytmusic/build/outputs/apk/release/ytmusic-release.apk \
+            "dist/YTMusicBYD-${VERSION}-android-arm64-v8a.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-android
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub Release
+    needs: [prepare, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          ls -l dist
+          test -f "dist/YouTubeBYD-${VERSION}-android-arm64-v8a.apk"
+          test -f "dist/YTMusicBYD-${VERSION}-android-arm64-v8a.apk"
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Compose release notes
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/release-header.md" <<'EOF'
+          ## Install
+
+          YouTube BYD and YT Music BYD require Android 10 (API 29) or newer on an arm64 head unit.
+
+          Download the APK you want, copy it to the car (USB or ADB) and allow installations from unknown sources. The apps can be installed side by side.
+
+          - `YouTubeBYD-<version>-android-arm64-v8a.apk`
+          - `YTMusicBYD-<version>-android-arm64-v8a.apk`
+
+          Verify the downloads against `SHA256SUMS.txt`:
+
+          ```sh
+          sha256sum -c SHA256SUMS.txt    # Linux
+          shasum -a 256 -c SHA256SUMS.txt # macOS
+          ```
+          EOF
+
+          if ! gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" --jq '.body' > "$RUNNER_TEMP/generated-notes.md"; then
+            echo "_Release notes could not be generated automatically._" > "$RUNNER_TEMP/generated-notes.md"
+          fi
+
+          {
+            cat "$RUNNER_TEMP/release-header.md"
+            echo
+            echo "---"
+            echo
+            cat "$RUNNER_TEMP/generated-notes.md"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Publish release
+        run: |
+          set -euo pipefail
+          TITLE="BYD Apps ${VERSION}"
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            CREATE_FLAGS=(--prerelease)
+            EDIT_FLAGS=(--prerelease)
+          else
+            CREATE_FLAGS=(--latest)
+            EDIT_FLAGS=(--prerelease=false --latest)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" \
+              --title "$TITLE" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              "${EDIT_FLAGS[@]}"
+          else
+            gh release create "$TAG" dist/* \
+              --verify-tag \
+              --title "$TITLE" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              "${CREATE_FLAGS[@]}"
+          fi

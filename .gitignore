@@ -48,9 +48,22 @@ output.json
 .idea/deploymentTargetDropDown.xml
 .idea/androidTestResultsUserPreferences.xml
 
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Keystore files
 *.jks
 *.keystore
+keystore/
+
+# Release staging
+dist/
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json

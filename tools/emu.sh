@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# DiLink 3 emulator workbench for the BYD WebView apps.
+# DiLink 3 emulator workbench for the BYD Apps.
 #
 # Geometry follows wheregoes/byd-apps: 1920x1080 at 240 dpi, landscape, with
 # the car's stable frame [0,84][1920,990] reproduced by padding the AOSP
 # status/navigation bars with `wm overscan`. This proves layout, insets,
 # rotation and standard media-key handling. It proves NOTHING about the car's
-# WebView version, CAN/MCU behaviour or how DiLink routes the steering wheel
-# keys internally.
+# CAN/MCU behaviour or how DiLink routes the steering wheel keys internally.
 #
 #   tools/emu.sh setup                     # one-time: API 29 image + AVD
 #   tools/emu.sh start                     # boot (EMU_HEADLESS=1 for no window)
@@ -15,9 +14,6 @@
 #   tools/emu.sh shot build/screens/app.png
 #   tools/emu.sh key next|prev|play|pause|playpause
 #   tools/emu.sh rotate landscape|portrait
-#   tools/emu.sh webview [package]         # Chrome DevTools over adb
-#   tools/emu.sh eval '<js>' [package]     # evaluate JS in the WebView
-#   tools/emu.sh zoom 1.25 [file]          # CSS zoom + screenshot
 #   tools/emu.sh info                      # size, density, overscan, insets
 #   tools/emu.sh stop
 #
@@ -73,10 +69,6 @@ need_sdk() {
     [ -f "$INI" ] || die "AVD $AVD not found; run: tools/emu.sh setup"
 }
 
-need_node() {
-    command -v node >/dev/null 2>&1 || die "node is required for eval/zoom"
-}
-
 usage() {
     cat <<EOF
 usage: tools/emu.sh <command>
@@ -86,16 +78,12 @@ usage: tools/emu.sh <command>
   start                 boot the AVD and apply geometry
                         (EMU_HEADLESS=1 for no window, EMU_AUDIO=1 for audio)
   stop                  kill the running AVD
-  install <app>         Gradle installDebug + launch
-                        (youtube|ytmusic|gecko-youtube|gecko-ytmusic)
+  install <app>         Gradle installDebug + launch (youtube|ytmusic)
   shot [file]           screencap to file (default: build/screens/emu-<time>.png)
   key [--session] <action>
                         send next|prev|play|pause|playpause through input
                         key events (--session uses `media dispatch`)
   rotate <orientation>  landscape|portrait
-  webview [package]     forward the WebView devtools socket to :9222
-  eval <js> [package]   evaluate JavaScript in the foreground WebView
-  zoom <scale> [file]   set CSS zoom on the top document and screenshot
   info                  print size, density, overscan and window insets
   help                  this text
 EOF
@@ -162,7 +150,9 @@ cmd_setup() {
 
 cmd_start() {
     need_sdk
-    if "$ADB" get-state >/dev/null 2>&1; then
+    local state
+    state="$("$ADB" get-state 2>/dev/null || true)"
+    if [ "$state" = "device" ]; then
         local running_avd
         running_avd="$("$ADB" emu avd name 2>/dev/null | head -1 | tr -d '\r')"
         if [ "$running_avd" != "$AVD" ]; then
@@ -208,11 +198,10 @@ cmd_install() {
     case "$app" in
         youtube) module=":apps:youtube"; pkg="dev.theolm.bydapps.youtube" ;;
         ytmusic) module=":apps:ytmusic"; pkg="dev.theolm.bydapps.ytmusic" ;;
-        gecko-youtube) module=":apps:gecko-youtube"; pkg="dev.theolm.bydapps.gecko.youtube" ;;
-        gecko-ytmusic) module=":apps:gecko-ytmusic"; pkg="dev.theolm.bydapps.gecko.ytmusic" ;;
-        *) die "install needs youtube, ytmusic, gecko-youtube or gecko-ytmusic" ;;
+        *) die "install needs youtube or ytmusic" ;;
     esac
-    "$ADB" get-state >/dev/null 2>&1 || die "emulator not running; run: tools/emu.sh start"
+    [ "$("$ADB" get-state 2>/dev/null || true)" = "device" ] || \
+        die "emulator not running; run: tools/emu.sh start"
     echo "=== Building and installing $app ==="
     (cd "$REPO_ROOT" && ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK" \
         ./gradlew "$module:installDebug")
@@ -265,53 +254,6 @@ cmd_rotate() {
     echo "rotation: $mode"
 }
 
-foreground_pkg() {
-    "$ADB" shell dumpsys window 2>/dev/null \
-        | sed -n 's/.*mCurrentFocus=Window{[^ ]* [^ ]* \([^/]*\)\/.*/\1/p' \
-        | head -1 | tr -d '\r'
-}
-
-forward_webview() {
-    local pkg="${1:-}" pid
-    [ -n "$pkg" ] || pkg="$(foreground_pkg)"
-    [ -n "$pkg" ] || die "could not detect the foreground package"
-    pid="$("$ADB" shell pidof "$pkg" | tr -d '\r')"
-    [ -n "$pid" ] || die "no running process for $pkg"
-    # A stale forward to the previous app would silently keep its WebView.
-    "$ADB" forward --remove tcp:9222 >/dev/null 2>&1 || true
-    "$ADB" forward tcp:9222 "localabstract:webview_devtools_remote_$pid" >/dev/null
-    echo "$pkg"
-}
-
-cmd_webview() {
-    need_sdk
-    local pkg
-    pkg="$(forward_webview "${1:-}")"
-    echo "Forwarded WebView of $pkg to localhost:9222"
-    echo "Open chrome://inspect in Chrome, or http://localhost:9222/json"
-    curl -fsS --max-time 2 http://localhost:9222/json/version 2>/dev/null || true
-}
-
-cmd_eval() {
-    need_sdk
-    need_node
-    local expr="${1:-}"
-    [ -n "$expr" ] || die "eval needs a JavaScript expression"
-    forward_webview "${2:-}" >/dev/null
-    node "$REPO_ROOT/tools/webview-eval.mjs" "$expr"
-}
-
-cmd_zoom() {
-    need_sdk
-    need_node
-    local scale="${1:-1.25}" out="${2:-$SCREEN_DIR/zoom-$scale.png}"
-    forward_webview "${3:-}" >/dev/null
-    node "$REPO_ROOT/tools/webview-eval.mjs" \
-        "document.documentElement.style.zoom='${scale}'"
-    sleep 1
-    cmd_shot "$out"
-}
-
 cmd_info() {
     need_sdk
     echo "=== size ==="
@@ -333,9 +275,6 @@ case "${1:-}" in
     shot) shift; cmd_shot "$@" ;;
     key) shift; cmd_key "$@" ;;
     rotate) shift; cmd_rotate "$@" ;;
-    webview) shift; cmd_webview "$@" ;;
-    eval) shift; cmd_eval "$@" ;;
-    zoom) shift; cmd_zoom "$@" ;;
     info) cmd_info ;;
     help|-h|--help) usage ;;
     *) usage >&2; exit 1 ;;
