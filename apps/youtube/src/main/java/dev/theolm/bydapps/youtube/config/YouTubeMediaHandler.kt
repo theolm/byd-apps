@@ -4,89 +4,122 @@ import android.webkit.WebView
 import dev.theolm.core.MediaButtonHandler
 
 /**
- * Media button handler for YouTube-specific navigation
- * Maps steering wheel/media buttons to YouTube keyboard shortcuts and player controls
+ * Maps steering-wheel media controls to the YouTube web player.
+ *
+ * Both the desktop and mobile pages expose the player as `#movie_player` with
+ * `nextVideo()`, `previousVideo()`, `playVideo()` and `pauseVideo()`. The old
+ * `.ytp-*` buttons only exist on the desktop page, which is why clicking them
+ * silently did nothing on the mobile layout.
+ *
+ * Keep this JavaScript ES5-friendly: the head unit's WebView can be as old as
+ * Chrome 74, so optional chaining and similar syntax must be avoided.
  */
 class YouTubeMediaHandler : MediaButtonHandler {
-    
+
     override fun onMediaNext(webView: WebView) {
-        // Try keyboard shortcut first (Shift+N), then button click as fallback
         webView.evaluateJavascript(
             """
             (function() {
-                // Try Shift+N keyboard shortcut
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'N',
-                    code: 'KeyN',
-                    shiftKey: true,
-                    bubbles: true
-                }));
-                
-                // Fallback: click next button after short delay
-                setTimeout(function() {
-                    const nextBtn = document.querySelector('.ytp-next-button') || 
-                                   document.querySelector('button[title*="Next"]') ||
-                                   document.querySelector('a.ytp-next-button');
-                    if (nextBtn) {
-                        nextBtn.click();
-                    }
-                }, 100);
+                var player = document.getElementById('movie_player');
+                if (player && typeof player.nextVideo === 'function') {
+                    player.nextVideo();
+                    return;
+                }
+                var button = document.querySelector('.ytp-next-button') ||
+                             document.querySelector('button[aria-label*="Next"]') ||
+                             document.querySelector('a.ytp-next-button');
+                if (button) button.click();
             })();
-            """,
+            """.trimIndent(),
             null
         )
     }
-    
+
     override fun onMediaPrevious(webView: WebView) {
-        // Try keyboard shortcut first (Shift+P), then button click as fallback
-        // Note: Previous only works in playlists with Shift+P
         webView.evaluateJavascript(
             """
             (function() {
-                // Try Shift+P keyboard shortcut
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'P',
-                    code: 'KeyP',
-                    shiftKey: true,
-                    bubbles: true
-                }));
-                
-                // Fallback: click previous button after short delay
-                setTimeout(function() {
-                    const prevBtn = document.querySelector('.ytp-prev-button') ||
-                                   document.querySelector('button[title*="Previous"]');
-                    if (prevBtn) {
-                        prevBtn.click();
-                    }
-                }, 100);
+                var player = document.getElementById('movie_player');
+                if (player && typeof player.previousVideo === 'function') {
+                    player.previousVideo();
+                    return;
+                }
+                var button = document.querySelector('.ytp-prev-button') ||
+                             document.querySelector('button[aria-label*="Previous"]');
+                if (button) button.click();
             })();
-            """,
+            """.trimIndent(),
             null
         )
     }
-    
+
     override fun onMediaPlayPause(webView: WebView) {
-        // YouTube uses 'k' key for play/pause toggle
         webView.evaluateJavascript(
             """
             (function() {
-                // Try 'k' keyboard shortcut
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                    key: 'k',
-                    code: 'KeyK',
-                    bubbles: true
-                }));
-                
-                // Fallback: click play/pause button
-                setTimeout(function() {
-                    const playPauseBtn = document.querySelector('.ytp-play-button') ||
-                                        document.querySelector('button[title*="Play"], button[title*="Pause"]');
-                    if (playPauseBtn) {
-                        playPauseBtn.click();
-                    }
-                }, 100);
+                var video = document.querySelector('video');
+                if (video) {
+                    if (video.paused) video.play(); else video.pause();
+                    return;
+                }
+                var player = document.getElementById('movie_player');
+                if (player && typeof player.getPlayerState === 'function') {
+                    if (player.getPlayerState() === 1) player.pauseVideo();
+                    else player.playVideo();
+                    return;
+                }
+                var button = document.querySelector('.ytp-play-button');
+                if (button) button.click();
             })();
-            """,
+            """.trimIndent(),
+            null
+        )
+    }
+
+    override fun onMediaPlay(webView: WebView) {
+        webView.evaluateJavascript(
+            """
+            (function() {
+                var video = document.querySelector('video');
+                if (video) {
+                    video.play();
+                    return;
+                }
+                var player = document.getElementById('movie_player');
+                if (player && typeof player.playVideo === 'function') {
+                    player.playVideo();
+                    return;
+                }
+                var button = document.querySelector('.ytp-play-button');
+                if (button && (button.getAttribute('aria-label') || '').toLowerCase().indexOf('play') >= 0) {
+                    button.click();
+                }
+            })();
+            """.trimIndent(),
+            null
+        )
+    }
+
+    override fun onMediaPause(webView: WebView) {
+        webView.evaluateJavascript(
+            """
+            (function() {
+                var video = document.querySelector('video');
+                if (video) {
+                    video.pause();
+                    return;
+                }
+                var player = document.getElementById('movie_player');
+                if (player && typeof player.pauseVideo === 'function') {
+                    player.pauseVideo();
+                    return;
+                }
+                var button = document.querySelector('.ytp-play-button');
+                if (button && (button.getAttribute('aria-label') || '').toLowerCase().indexOf('pause') >= 0) {
+                    button.click();
+                }
+            })();
+            """.trimIndent(),
             null
         )
     }

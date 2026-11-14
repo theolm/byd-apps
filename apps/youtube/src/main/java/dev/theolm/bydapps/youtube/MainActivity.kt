@@ -1,11 +1,13 @@
 package dev.theolm.bydapps.youtube
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.view.KeyEvent
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -21,6 +23,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         setContent {
@@ -28,7 +34,10 @@ class MainActivity : ComponentActivity() {
                 BaseWebView(
                     activity = this,
                     configuration = YouTubeConfig,
-                    onWebViewCreated = { webView = it },
+                    onWebViewCreated = {
+                        webView = it
+                        YouTubePlaybackService.WebViewHolder.getInstance().webView = it
+                    },
                     onFullscreenChanged = { isFullscreen ->
                         handleFullscreenChange(isFullscreen)
                     },
@@ -42,7 +51,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        startService(Intent(this, YouTubePlaybackService::class.java))
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, YouTubePlaybackService::class.java)
+        )
     }
 
     override fun onResume() {
@@ -66,6 +78,14 @@ class MainActivity : ComponentActivity() {
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     webView?.let { handler.onMediaPlayPause(it) }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                    webView?.let { handler.onMediaPlay(it) }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    webView?.let { handler.onMediaPause(it) }
                     return true
                 }
             }

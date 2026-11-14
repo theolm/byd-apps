@@ -19,6 +19,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://maven.mozilla.org/maven2/") {
+            content {
+                includeGroup("org.mozilla.geckoview")
+            }
+        }
     }
 }
 
@@ -26,3 +31,4 @@ rootProject.name = "BYD Apps"
 include(":core")
 include(":apps:youtube")
 include(":apps:ytmusic")
+include(":apps:gecko")

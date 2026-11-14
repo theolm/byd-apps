@@ -24,4 +24,16 @@ interface MediaButtonHandler {
      * @param webView The WebView instance to control
      */
     fun onMediaPlayPause(webView: WebView)
+
+    /**
+     * Called when a dedicated play command arrives (media session or headset).
+     * Implementations that can tell play from pause should override this.
+     */
+    fun onMediaPlay(webView: WebView) = onMediaPlayPause(webView)
+
+    /**
+     * Called when a dedicated pause command arrives (media session or headset).
+     * Implementations that can tell play from pause should override this.
+     */
+    fun onMediaPause(webView: WebView) = onMediaPlayPause(webView)
 }

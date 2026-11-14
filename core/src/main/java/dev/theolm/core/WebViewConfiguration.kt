@@ -29,6 +29,21 @@ interface WebViewConfiguration {
      * If null, media buttons will not be handled.
      */
     val mediaButtonHandler: MediaButtonHandler?
+
+    /**
+     * Cookies applied before the first page load, as URL to Set-Cookie header
+     * pairs. Use for site preferences that the page only reads at startup,
+     * such as YouTube's `PREF` theme cookie.
+     */
+    val cookies: List<Pair<String, String>> get() = emptyList()
+
+    /**
+     * Renders the page in a smaller logical viewport and scales it up to fill
+     * the screen. This reflows responsive sites instead of just zooming fixed
+     * elements, so text and controls get bigger without breaking the layout.
+     * 1.0 leaves the WebView at its native size.
+     */
+    val uiScale: Float get() = 1f
 }
 
 /**

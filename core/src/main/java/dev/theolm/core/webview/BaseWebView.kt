@@ -3,6 +3,7 @@ package dev.theolm.core.webview
 import android.annotation.SuppressLint
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.theolm.core.WebViewConfiguration
 import dev.theolm.core.webview.WebViewConfig.applySettings
+import kotlin.math.ceil
 
 /**
  * A reusable WebView composable with fullscreen support
@@ -139,11 +141,19 @@ fun BaseWebView(
                         setDownloadListener(WebViewDownloadHandler(factoryContext))
                     }
 
+                    // Some preferences must exist before the page's own scripts
+                    // run (YouTube's mobile theme, for example).
+                    configuration.cookies.forEach { (url, cookie) ->
+                        CookieManager.getInstance().setCookie(url, cookie)
+                    }
+                    CookieManager.getInstance().flush()
+
                     loadUrl(configuration.startUrl)
                 }
 
                 webView = webViewInstance
                 addView(webViewInstance)
+                applyUiScale(this, webViewInstance, configuration.uiScale)
                 
                 // Notify that WebView is created
                 onWebViewCreated(webViewInstance)
@@ -151,4 +161,30 @@ fun BaseWebView(
         },
         modifier = Modifier.fillMaxSize()
     )
+}
+
+/**
+ * Lays the WebView out in a [scale] times smaller viewport and scales the view
+ * back up. The page sees a narrower CSS viewport and reflows into its compact
+ * layout; fixed elements are scaled together with the rest of the page.
+ */
+private fun applyUiScale(container: FrameLayout, webView: WebView, scale: Float) {
+    if (scale <= 0f || scale == 1f) return
+
+    val apply = Runnable {
+        val width = container.width
+        val height = container.height
+        if (width > 0 && height > 0) {
+            val childWidth = ceil(width / scale).toInt()
+            val childHeight = ceil(height / scale).toInt()
+            webView.layoutParams = FrameLayout.LayoutParams(childWidth, childHeight)
+            webView.pivotX = 0f
+            webView.pivotY = 0f
+            webView.scaleX = scale
+            webView.scaleY = scale
+        }
+    }
+
+    container.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> apply.run() }
+    container.post(apply)
 }

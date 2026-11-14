@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.view.KeyEvent
+import androidx.core.content.ContextCompat
 import dev.theolm.bydapps.ytmusic.service.YTMusicPlaybackService
 
 class YTMusicMediaButtonReceiver : BroadcastReceiver() {
@@ -26,7 +27,7 @@ class YTMusicMediaButtonReceiver : BroadcastReceiver() {
             putExtra(EXTRA_KEY_EVENT, keyEvent)
         }
 
-        context.startService(serviceIntent)
+        ContextCompat.startForegroundService(context, serviceIntent)
     }
 
     companion object {

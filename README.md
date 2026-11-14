@@ -38,6 +38,13 @@ Just sideload the APK files directly to your BYD media center. No rooting, no mi
 
 **Note:** While designed for BYD vehicles, these apps work on any Android device running Android 10+.
 
+## Testing without the car
+
+`tools/emu.sh` boots a DiLink 3-sized AVD (1920x1080, 240 dpi, landscape,
+`[0,84][1920,990]` content area) and installs the apps into it. It also sends
+media keys through `MediaSession` and exposes the WebView to Chrome DevTools.
+See [docs/emulator.md](docs/emulator.md).
+
 ## Architecture
 
 This project uses a modular architecture with shared core components:

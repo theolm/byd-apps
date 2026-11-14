@@ -12,14 +12,18 @@ import android.os.IBinder
 import android.os.Looper
 import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import dev.theolm.bydapps.ytmusic.MainActivity
 import dev.theolm.bydapps.ytmusic.R
+import dev.theolm.bydapps.ytmusic.config.YTMusicConfig
 import dev.theolm.bydapps.ytmusic.receiver.YTMusicMediaButtonReceiver
+import dev.theolm.core.media.WebViewMediaSession
 
 class YTMusicPlaybackService : Service() {
 
     private var webViewHolder: WebViewHolder? = null
-    private val handler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private lateinit var mediaSession: WebViewMediaSession
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -27,77 +31,64 @@ class YTMusicPlaybackService : Service() {
         super.onCreate()
         createNotificationChannel()
         webViewHolder = WebViewHolder.getInstance()
+
+        val mediaHandler = requireNotNull(YTMusicConfig.mediaButtonHandler) {
+            "YTMusicConfig.mediaButtonHandler is required"
+        }
+        mediaSession = WebViewMediaSession(
+            context = this,
+            tag = "YTMusicBYD",
+            sessionActivity = PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            ),
+            webView = { webViewHolder?.webView },
+            handler = mediaHandler
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, createNotification())
 
-        intent?.action?.let { action ->
-            when (action) {
-                YTMusicMediaButtonReceiver.ACTION_MEDIA_BUTTON -> {
-                    val keyEvent: KeyEvent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(YTMusicMediaButtonReceiver.EXTRA_KEY_EVENT, KeyEvent::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(YTMusicMediaButtonReceiver.EXTRA_KEY_EVENT) as? KeyEvent
-                    }
-
-                    keyEvent?.let { event ->
-                        handleMediaButton(event.keyCode)
-                    }
+        when (intent?.action) {
+            YTMusicMediaButtonReceiver.ACTION_MEDIA_BUTTON -> {
+                val keyEvent: KeyEvent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(
+                        YTMusicMediaButtonReceiver.EXTRA_KEY_EVENT,
+                        KeyEvent::class.java
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(YTMusicMediaButtonReceiver.EXTRA_KEY_EVENT) as? KeyEvent
                 }
+                keyEvent?.let { handleMediaButton(it.keyCode) }
             }
+            ACTION_NEXT -> handleMediaButton(KeyEvent.KEYCODE_MEDIA_NEXT)
+            ACTION_PREVIOUS -> handleMediaButton(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            ACTION_PLAY_PAUSE -> handleMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
         }
 
         return START_STICKY
     }
 
+    override fun onDestroy() {
+        mediaSession.release()
+        super.onDestroy()
+    }
+
     private fun handleMediaButton(keyCode: Int) {
         val webView = webViewHolder?.webView ?: return
+        val mediaHandler = YTMusicConfig.mediaButtonHandler ?: return
 
-        val jsCode = when (keyCode) {
-            KeyEvent.KEYCODE_MEDIA_NEXT -> """
-                (function() {
-                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaTrackNext', code: 'MediaTrackNext', bubbles: true }));
-                    setTimeout(function() {
-                        const nextBtn = document.querySelector('[data-test-id="next-button"]') || 
-                                       document.querySelector('.next-button') ||
-                                       document.querySelector('[aria-label*="Next"]') ||
-                                       document.querySelector('tp-yt-paper-icon-button[aria-label*="next"]');
-                        if (nextBtn) nextBtn.click();
-                    }, 100);
-                })();
-            """
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> """
-                (function() {
-                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaTrackPrevious', code: 'MediaTrackPrevious', bubbles: true }));
-                    setTimeout(function() {
-                        const prevBtn = document.querySelector('[data-test-id="previous-button"]') ||
-                                       document.querySelector('.previous-button') ||
-                                       document.querySelector('[aria-label*="Previous"]') ||
-                                       document.querySelector('tp-yt-paper-icon-button[aria-label*="previous"]');
-                        if (prevBtn) prevBtn.click();
-                    }, 100);
-                })();
-            """
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> """
-                (function() {
-                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaPlayPause', code: 'MediaPlayPause', bubbles: true }));
-                    setTimeout(function() {
-                        const playPauseBtn = document.querySelector('[data-test-id="play-pause-button"]') ||
-                                            document.querySelector('.play-pause-button') ||
-                                            document.querySelector('[aria-label*="Play"], [aria-label*="Pause"]') ||
-                                            document.querySelector('tp-yt-paper-icon-button[aria-label*="play"], tp-yt-paper-icon-button[aria-label*="pause"]');
-                        if (playPauseBtn) playPauseBtn.click();
-                    }, 100);
-                })();
-            """
-            else -> null
-        }
-
-        jsCode?.let { code ->
-            handler.post {
-                webView.evaluateJavascript(code, null)
+        mainHandler.post {
+            when (keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> mediaHandler.onMediaNext(webView)
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> mediaHandler.onMediaPrevious(webView)
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> mediaHandler.onMediaPlayPause(webView)
+                KeyEvent.KEYCODE_MEDIA_PLAY -> mediaHandler.onMediaPlay(webView)
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> mediaHandler.onMediaPause(webView)
             }
         }
     }
@@ -131,8 +122,37 @@ class YTMusicPlaybackService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setStyle(
+                MediaNotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            .addAction(
+                android.R.drawable.ic_media_previous,
+                "Previous",
+                mediaAction(ACTION_PREVIOUS, 1)
+            )
+            .addAction(
+                android.R.drawable.ic_media_play,
+                "Play/Pause",
+                mediaAction(ACTION_PLAY_PAUSE, 2)
+            )
+            .addAction(
+                android.R.drawable.ic_media_next,
+                "Next",
+                mediaAction(ACTION_NEXT, 3)
+            )
             .build()
     }
+
+    private fun mediaAction(action: String, requestCode: Int): PendingIntent =
+        PendingIntent.getService(
+            this,
+            requestCode,
+            Intent(this, YTMusicPlaybackService::class.java).setAction(action),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
     class WebViewHolder private constructor() {
         var webView: android.webkit.WebView? = null
@@ -152,5 +172,8 @@ class YTMusicPlaybackService : Service() {
     companion object {
         private const val CHANNEL_ID = "ytmusic_playback_channel"
         private const val NOTIFICATION_ID = 1
+        private const val ACTION_NEXT = "dev.theolm.bydapps.ytmusic.ACTION_NEXT"
+        private const val ACTION_PREVIOUS = "dev.theolm.bydapps.ytmusic.ACTION_PREVIOUS"
+        private const val ACTION_PLAY_PAUSE = "dev.theolm.bydapps.ytmusic.ACTION_PLAY_PAUSE"
     }
 }
