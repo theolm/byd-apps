@@ -1,0 +1,1 @@
+# GeckoView spike; no shrinking.

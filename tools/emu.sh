@@ -86,7 +86,8 @@ usage: tools/emu.sh <command>
   start                 boot the AVD and apply geometry
                         (EMU_HEADLESS=1 for no window, EMU_AUDIO=1 for audio)
   stop                  kill the running AVD
-  install <app>         Gradle installDebug + launch (youtube|ytmusic|gecko)
+  install <app>         Gradle installDebug + launch
+                        (youtube|ytmusic|gecko-youtube|gecko-ytmusic)
   shot [file]           screencap to file (default: build/screens/emu-<time>.png)
   key [--session] <action>
                         send next|prev|play|pause|playpause through input
@@ -207,8 +208,9 @@ cmd_install() {
     case "$app" in
         youtube) module=":apps:youtube"; pkg="dev.theolm.bydapps.youtube" ;;
         ytmusic) module=":apps:ytmusic"; pkg="dev.theolm.bydapps.ytmusic" ;;
-        gecko) module=":apps:gecko"; pkg="dev.theolm.bydapps.gecko" ;;
-        *) die "install needs youtube, ytmusic or gecko" ;;
+        gecko-youtube) module=":apps:gecko-youtube"; pkg="dev.theolm.bydapps.gecko.youtube" ;;
+        gecko-ytmusic) module=":apps:gecko-ytmusic"; pkg="dev.theolm.bydapps.gecko.ytmusic" ;;
+        *) die "install needs youtube, ytmusic, gecko-youtube or gecko-ytmusic" ;;
     esac
     "$ADB" get-state >/dev/null 2>&1 || die "emulator not running; run: tools/emu.sh start"
     echo "=== Building and installing $app ==="
