@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "BYD Session Bridge",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "browser_specific_settings": {
     "gecko": {
       "id": "session-bridge@byd.theolm.dev"

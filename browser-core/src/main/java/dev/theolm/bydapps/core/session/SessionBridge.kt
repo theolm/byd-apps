@@ -57,9 +57,9 @@ internal class SessionBridge private constructor(
             })
     }
 
-    fun status(callback: (Boolean) -> Unit) {
+    fun status(callback: (Boolean?) -> Unit) {
         send(TYPE_STATUS, null, TIMEOUT_MS) { result ->
-            callback(result?.optBoolean("signedIn") == true)
+            callback(result?.optBoolean("signedIn"))
         }
     }
 

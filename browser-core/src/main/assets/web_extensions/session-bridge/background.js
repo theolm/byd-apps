@@ -8,13 +8,24 @@
  * are only sent to the app that owns this profile.
  */
 
-const AUTH_COOKIE_NAMES = ["SID", "__Secure-1PSID", "__Secure-3PSID"];
+const AUTH_URL = "https://www.google.com/";
+const IMPORT_BATCH_SIZE = 20;
 
-function isAuthCookie(cookie) {
-  return (
-    AUTH_COOKIE_NAMES.includes(cookie.name) &&
-    /(^|\.)google\.com$/.test(cookie.domain)
+/**
+ * A lone SID on .google.com is not proof of a signed-in account: YouTube sets
+ * a visitor cookie with that name. Google auth sets either the modern
+ * __Secure-*PSID pair or the legacy SID + HSID pair.
+ */
+function hasAuthSession(cookies) {
+  const names = new Set(
+    cookies
+      .filter((cookie) => /(^|\.)google\.com$/.test(cookie.domain))
+      .map((cookie) => cookie.name)
   );
+  if (names.has("__Secure-1PSID") || names.has("__Secure-3PSID")) {
+    return true;
+  }
+  return names.has("SID") && names.has("HSID");
 }
 
 /**
@@ -77,73 +88,111 @@ function urlFor(cookie) {
   return `${scheme}://${host}${cookie.path || "/"}`;
 }
 
+/**
+ * Only Google cookies are needed to answer status(). Reading the whole jar
+ * here made every cold start scan every cookie in the profile.
+ */
+async function readAuthCookies() {
+  let cookies;
+  try {
+    cookies = await browser.cookies.getAll({ url: AUTH_URL });
+  } catch (error) {
+    // Older Gecko builds may not support url filtering; fall back to the
+    // full jar so status stays correct.
+    return readCookies();
+  }
+  try {
+    cookies.push(
+      ...(await browser.cookies.getAll({
+        url: AUTH_URL,
+        partitionKey: {},
+      }))
+    );
+  } catch (error) {
+    // Older Gecko builds reject the empty partition key; the first call is
+    // still enough for the normal Google auth cookies.
+  }
+  return cookies;
+}
+
 async function status() {
-  const cookies = await readCookies();
-  return { signedIn: cookies.some(isAuthCookie) };
+  const cookies = await readAuthCookies();
+  return { signedIn: hasAuthSession(cookies) };
 }
 
 async function exportSession() {
   const cookies = await readCookies();
   return {
-    signedIn: cookies.some(isAuthCookie),
+    signedIn: hasAuthSession(cookies),
     cookies: cookies.map(serialize),
   };
 }
 
-async function importSession(payload) {
-  const cookies = (payload && payload.cookies) || [];
-  let applied = 0;
-  const errors = [];
+async function importCookie(cookie, errors) {
+  const details = {
+    url: urlFor(cookie),
+    name: cookie.name,
+    value: cookie.value,
+    path: cookie.path || "/",
+    secure: !!cookie.secure,
+    httpOnly: !!cookie.httpOnly,
+  };
+  // Only a leading dot marks a domain cookie. Passing the bare host would
+  // silently widen a host-only cookie to its subdomains.
+  if (cookie.domain && cookie.domain.startsWith(".")) {
+    details.domain = cookie.domain;
+  }
+  if (cookie.storeId) details.storeId = cookie.storeId;
+  if (
+    cookie.sameSite &&
+    cookie.sameSite !== "unspecified"
+  ) {
+    details.sameSite = cookie.sameSite;
+  }
+  if (typeof cookie.expirationDate === "number") {
+    details.expirationDate = cookie.expirationDate;
+  }
+  if (cookie.firstPartyDomain) {
+    details.firstPartyDomain = cookie.firstPartyDomain;
+  }
+  if (cookie.partitionKey) details.partitionKey = cookie.partitionKey;
 
-  for (const cookie of cookies) {
-    const details = {
-      url: urlFor(cookie),
-      name: cookie.name,
-      value: cookie.value,
-      path: cookie.path || "/",
-      secure: !!cookie.secure,
-      httpOnly: !!cookie.httpOnly,
-    };
-    // Only a leading dot marks a domain cookie. Passing the bare host would
-    // silently widen a host-only cookie to its subdomains.
-    if (cookie.domain && cookie.domain.startsWith(".")) {
-      details.domain = cookie.domain;
-    }
-    if (cookie.storeId) details.storeId = cookie.storeId;
-    if (
-      cookie.sameSite &&
-      cookie.sameSite !== "unspecified"
-    ) {
-      details.sameSite = cookie.sameSite;
-    }
-    if (typeof cookie.expirationDate === "number") {
-      details.expirationDate = cookie.expirationDate;
-    }
-    if (cookie.firstPartyDomain) {
-      details.firstPartyDomain = cookie.firstPartyDomain;
-    }
-    if (cookie.partitionKey) details.partitionKey = cookie.partitionKey;
-
+  try {
+    await browser.cookies.set(details);
+    return true;
+  } catch (error) {
+    // SameSite=None is rejected unless the cookie is Secure; retry without
+    // the attribute instead of dropping the login cookie.
+    delete details.sameSite;
     try {
       await browser.cookies.set(details);
-      applied++;
-    } catch (error) {
-      // SameSite=None is rejected unless the cookie is Secure; retry without
-      // the attribute instead of dropping the login cookie.
-      delete details.sameSite;
-      try {
-        await browser.cookies.set(details);
-        applied++;
-      } catch (retryError) {
-        if (errors.length < 5) {
-          errors.push({
-            name: cookie.name,
-            domain: cookie.domain,
-            error: String((retryError && retryError.message) || retryError),
-          });
-        }
+      return true;
+    } catch (retryError) {
+      if (errors.length < 5) {
+        errors.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          error: String((retryError && retryError.message) || retryError),
+        });
       }
+      return false;
     }
+  }
+}
+
+async function importSession(payload) {
+  const cookies = (payload && payload.cookies) || [];
+  const errors = [];
+  let applied = 0;
+
+  // Cookies are independent; a small parallel batch avoids one IPC round trip
+  // per cookie without flooding the cookie service.
+  for (let i = 0; i < cookies.length; i += IMPORT_BATCH_SIZE) {
+    const batch = cookies.slice(i, i + IMPORT_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map((cookie) => importCookie(cookie, errors))
+    );
+    applied += results.filter(Boolean).length;
   }
 
   return {

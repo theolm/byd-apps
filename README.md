@@ -63,6 +63,9 @@ Each app keeps:
 - YouTube at **1.0** and YT Music at **1.2** content scale;
 - a native splash from launch until the first paint, plus YT Music's
   `minimal-ui` display mode;
+- the first page load starts immediately; sibling session restore runs in
+  parallel and only reloads the start page if it arrives late;
+- a native retry screen for offline pages and crashed content processes;
 - a native `MediaSession` that forwards steering-wheel
   next/previous/play/pause to the page;
 - a foreground media service and `MediaBrowserService` for background playback

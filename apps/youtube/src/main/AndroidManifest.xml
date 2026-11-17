@@ -22,6 +22,7 @@
             android:name="dev.theolm.bydapps.youtube.MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.YouTubeBYD">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

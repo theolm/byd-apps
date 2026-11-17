@@ -10,9 +10,10 @@ the sibling app instead.
 ```text
 App A (signed in)                     App B (signed out)
   onStop                                onCreate
-    extension export  ──►  bundle.json    provider call  ──►  bundle.json
+    extension export  ──►  bundle.json    loadUri (immediately)
+                                          provider call  ──►  bundle.json
                                           extension import
-                                          loadUri
+                                          optional late reload
 ```
 
 1. `browser-core` ships a built-in WebExtension in
@@ -30,8 +31,10 @@ App A (signed in)                     App B (signed out)
    a cross-app read is a plain file read.
 4. When an app starts **signed out**, it asks every package in its
    `partnerPackages` for a bundle, picks the newest signed-in one and restores
-   the cookies before the first page load. If the restore arrives late, the
-   page reloads once.
+   the cookies. The page is already loading in parallel; if the restore lands
+   after the start page has begun, the app reloads once, and only while the
+   start page is still showing and media is not playing. A cached last-known
+   sign-in state skips the status query for signed-in profiles.
 
 Rules that keep this safe:
 
@@ -84,6 +87,16 @@ cat > /tmp/session-bundle.json <<'JSON'
       "httpOnly": true,
       "sameSite": "no_restriction",
       "expirationDate": 1863400000
+    },
+    {
+      "name": "HSID",
+      "value": "synthetic-hsid",
+      "domain": ".google.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "no_restriction",
+      "expirationDate": 1863400000
     }
   ]
 }
@@ -103,12 +116,17 @@ Expected output:
 
 ```text
 D SessionSync: Local session signedIn=false
-D SessionSync: Restored 1 cookies (0 failed, null), hash=…
+D SessionSync: Restored 2 cookies (0 failed, null), hash=…
 ```
 
+A synthetic account needs either `SID` + `HSID` or one of the modern
+`__Secure-1PSID` / `__Secure-3PSID` cookies. A lone `SID` is a YouTube visitor
+cookie, not proof of a Google account, so it is ignored.
+
 Sending the app to the background then logs
-`Export check signedIn=true` and `Exported N cookies`, and the bundle appears
-in the other app's `files/session/`.
+`Export bundle signedIn=true, cookies=N` and `Exported N cookies`, and the
+bundle appears in the other app's `files/session/`. The export is one cookie
+jar scan; it replaced the old status + export pair.
 
 The cookies can be inspected without root:
 

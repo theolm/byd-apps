@@ -3,4 +3,8 @@
     <string name="media_playback_channel_name">Media playback</string>
     <string name="media_playback_channel_description">Keeps media playing while the app is in the background</string>
     <string name="media_playback_notification">Playing in the background</string>
+    <string name="session_error_title">Page unavailable</string>
+    <string name="session_error_message">The page could not be loaded. Check the connection and try again.</string>
+    <string name="session_crashed_message">The page stopped responding. Try loading it again.</string>
+    <string name="session_error_retry">Try again</string>
 </resources>

@@ -80,6 +80,9 @@ audio routing or steering-wheel mapping.
 - Fullscreen requests are declined: `onFullScreen` exits after the transition,
   and the back key exits fullscreen if one slips through. There is no custom
   fullscreen UI.
+- Content blocking/ETP stays off. Enabling the tracking-protection database
+  added several seconds to the first paint on the DiLink 3 emulator; measure
+  before reintroducing it.
 - AGP 9.1's built-in Kotlin compiler (2.2) cannot read the Kotlin 2.4 metadata
   shipped by GeckoView 160. The modules apply the `kotlin-compose` plugin
   2.3.20 as a workaround, and `browser-core` keeps the Compose runtime on the
@@ -114,10 +117,17 @@ is invisible to the other. `browser-core` bridges the cookie jar between them:
   the `geckoViewAddons` and `nativeMessaging` permissions in its manifest;
   without `geckoViewAddons` GeckoView routes native messaging to the desktop
   path, which fails on Android.
-- `SessionSync` exports on `onStop` only when a Google auth cookie (`SID`,
-  `__Secure-1PSID`, `__Secure-3PSID`) is present, and imports only when the
-  local profile is signed out. Never import over an account that is already
-  signed in; it would switch accounts silently.
+- `SessionSync` exports on `onStop` only when a Google auth cookie
+  (`__Secure-1PSID`/`__Secure-3PSID`, or the legacy `SID` + `HSID` pair) is
+  present, and imports only when the local profile is signed out. A lone `SID`
+  is a YouTube visitor cookie and must not count as signed in. Never import
+  over an account that is already signed in; it would switch accounts silently.
+- The page must load before session restore: call `loadUri` first, then run
+  `SessionSync`. It caches the last known sign-in state and only asks for a
+  reload when a late import lands while the start page is still showing and
+  media is idle. Do not reintroduce a gate that waits for the bridge extension.
+- Export once per `onStop`; `export` already returns the sign-in state, so do
+  not add a separate `status` scan.
 - The bundle is written to `files/session/session-bundle.json` and shared
   through `SessionProvider` at `content://<applicationId>.sessionsync`,
   protected by the `signature`-level `<applicationId>.permission.SESSION_SYNC`.
@@ -149,6 +159,8 @@ is invisible to the other. `browser-core` bridges the cookie jar between them:
   apps need today.
 - Use app resources for labels, colors and themes. Do not hardcode UI strings.
 - Keep the dark window background and transparent system bars.
+- Keep `android:launchMode="singleTask"` on the browser activities so the
+  launcher and media notification reuse the running Gecko session.
 - Do not add Google Play Services or large dependencies; APK size matters.
 - Do not reintroduce a start screen or a shared application ID.
 

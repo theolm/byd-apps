@@ -1,14 +1,17 @@
 package dev.theolm.bydapps.core
 
 import android.Manifest
+import android.app.AlertDialog
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -84,6 +87,8 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var isPlaying = false
     private var keepPlayingInBackground = false
     private var canGoBack = false
+    private var currentUrl: String? = null
+    private var startPageStarted = false
     private var playbackServiceStarted = false
     private var notificationPermissionRequested = false
     private var artwork: Bitmap? = null
@@ -92,9 +97,14 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var fullScreen = false
     private var splashView: View? = null
     private var splashDismissed = false
+    private var startupStartedAt = 0L
+    private var errorDialog: AlertDialog? = null
+    private var contentCrashed = false
 
     /** Covers the GeckoView until the first paint so launch feels like an app. */
     private val splashTimeout = Runnable { hideSplash() }
+
+    private val loadErrorRunnable = Runnable { showLoadError() }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -110,7 +120,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        startupStartedAt = SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "Startup: onCreate")
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -123,9 +135,12 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             }
         })
 
-        setupMediaSession()
-
         val runtime = getOrCreateRuntime(applicationContext, contentScale)
+        runtime.warmUp()
+        Log.d(TAG, "Startup: runtime ready +${startupElapsed()} ms (warmUp)")
+
+        setupMediaSession()
+        Log.d(TAG, "Startup: media session ready +${startupElapsed()} ms")
 
         val settings = GeckoSessionSettings.Builder()
             .userAgentMode(userAgentMode)
@@ -143,8 +158,11 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         }
         geckoSession.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onFirstContentfulPaint(session: GeckoSession) {
-                Log.d(TAG, "First contentful paint")
+                Log.d(TAG, "Startup: first contentful paint +${startupElapsed()} ms")
                 hideSplash()
+                window.decorView.removeCallbacks(loadErrorRunnable)
+                dismissErrorDialog()
+                contentCrashed = false
             }
 
             override fun onWebAppManifest(session: GeckoSession, manifest: JSONObject) {
@@ -162,10 +180,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
                 Log.d(TAG, "Fullscreen=$fullScreen")
                 this@GeckoWebAppActivity.fullScreen = fullScreen
-                // Some sites request fullscreen for playback. This wrapper has
-                // no fullscreen chrome, so that would hide the queue and the
-                // transport bar. Keep the normal page layout instead; the exit
-                // must wait until Gecko has committed the transition.
+                // YT Music can open its player in fullscreen. This wrapper has
+                // no fullscreen chrome, so that hides the queue and transport
+                // bar; exit after the transition and keep the normal page.
                 if (fullScreen) {
                     window.decorView.postDelayed(
                         { if (session.isOpen) session.exitFullScreen() },
@@ -176,18 +193,35 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
             override fun onCrash(session: GeckoSession) {
                 Log.e(TAG, "Content process crashed")
-                hideSplash()
+                handleContentProcessLost()
             }
 
             override fun onKill(session: GeckoSession) {
                 Log.e(TAG, "Content process killed")
-                hideSplash()
+                handleContentProcessLost()
             }
         }
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                Log.d(TAG, "Startup: page start $url +${startupElapsed()} ms")
+                currentUrl = url
+                if (isStartPage(url)) {
+                    startPageStarted = true
+                }
+                window.decorView.removeCallbacks(loadErrorRunnable)
+                dismissErrorDialog()
+                contentCrashed = false
+            }
+
             override fun onPageStop(session: GeckoSession, success: Boolean) {
-                Log.d(TAG, "Page stop success=$success")
-                if (!success) hideSplash()
+                Log.d(TAG, "Startup: page stop success=$success +${startupElapsed()} ms")
+                if (!success) {
+                    hideSplash()
+                    // A redirect or a quick retry can stop a load without a
+                    // real failure; only show the dialog if no new page starts.
+                    window.decorView.removeCallbacks(loadErrorRunnable)
+                    window.decorView.postDelayed(loadErrorRunnable, LOAD_ERROR_DELAY_MS)
+                }
             }
         }
         geckoSession.mediaSessionDelegate = object : MediaSession.Delegate {
@@ -268,28 +302,43 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             setSession(geckoSession)
         }
         setContentView(createContentView(geckoView))
+        Log.d(TAG, "Startup: view ready +${startupElapsed()} ms")
         if (!splashDismissed) {
             window.decorView.postDelayed(splashTimeout, SPLASH_TIMEOUT_MS)
         }
+
+        // Start the first load immediately; session restore runs in parallel
+        // and only asks for a reload if it lands after the page has started.
+        Log.d(TAG, "Startup: loadUri +${startupElapsed()} ms")
+        geckoSession.loadUri(startUrl)
 
         val bridge = SessionBridge.get(runtime)
         bridge.start()
         val sync = SessionSync(applicationContext, partnerPackages, bridge)
         sessionSync = sync
         sync.prepare(
-            onReady = {
-                if (geckoSession.isOpen) {
-                    geckoSession.loadUri(startUrl)
-                }
-            },
             onLateImport = {
-                // A sibling session arrived after the page started loading;
-                // reload once so the site picks up the new cookies.
-                if (!isDestroyed && geckoSession.isOpen) {
+                // Reload only while the start page is still showing. A late
+                // import must not interrupt a song, video or deeper page.
+                if (!isDestroyed && geckoSession.isOpen && !isPlaying &&
+                    startPageStarted && isStartPage(currentUrl)
+                ) {
+                    Log.d(TAG, "Late session import; reloading start page")
                     geckoSession.reload()
                 }
             },
         )
+        Log.d(TAG, "Startup: onCreate complete +${startupElapsed()} ms")
+    }
+
+    private fun startupElapsed(): Long = SystemClock.elapsedRealtime() - startupStartedAt
+
+    private fun isStartPage(url: String?): Boolean {
+        if (url == null) return false
+        val current = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        val start = Uri.parse(startUrl)
+        val path = current.path ?: ""
+        return current.host == start.host && (path.isEmpty() || path == "/")
     }
 
     /**
@@ -365,6 +414,42 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 (splash.parent as? FrameLayout)?.removeView(splash)
             }
             .start()
+    }
+
+    private fun handleContentProcessLost() {
+        contentCrashed = true
+        hideSplash()
+        window.decorView.removeCallbacks(loadErrorRunnable)
+        showLoadError()
+    }
+
+    private fun showLoadError() {
+        if (isFinishing || isDestroyed || errorDialog != null) return
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+
+        val crashed = contentCrashed
+        errorDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.session_error_title)
+            .setMessage(
+                if (crashed) R.string.session_crashed_message
+                else R.string.session_error_message
+            )
+            .setPositiveButton(R.string.session_error_retry) { _, _ ->
+                errorDialog = null
+                val active = session
+                if (crashed || active == null || !active.isOpen) {
+                    recreate()
+                } else {
+                    active.reload()
+                }
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun dismissErrorDialog() {
+        errorDialog?.dismiss()
+        errorDialog = null
     }
 
     private fun setupMediaSession() {
@@ -531,6 +616,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         keepPlayingInBackground = false
         window.decorView.removeCallbacks(keepAliveRunnable)
         session?.setActive(true)
+        if (contentCrashed) showLoadError()
     }
 
     /**
@@ -586,7 +672,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     override fun onDestroy() {
         window.decorView.removeCallbacks(keepAliveRunnable)
         window.decorView.removeCallbacks(splashTimeout)
+        window.decorView.removeCallbacks(loadErrorRunnable)
         splashView = null
+        dismissErrorDialog()
         stopPlaybackService()
         session?.close()
         if (MediaSessionRegistry.token == mediaSessionCompat.sessionToken) {
@@ -603,6 +691,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         private const val SPLASH_FADE_MS = 200L
         private const val SPLASH_TIMEOUT_MS = 8_000L
         private const val FULLSCREEN_EXIT_DELAY_MS = 1_000L
+        private const val LOAD_ERROR_DELAY_MS = 800L
 
         @Volatile
         private var sharedRuntime: GeckoRuntime? = null
@@ -621,6 +710,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                     context,
                     GeckoRuntimeSettings.Builder()
                         .displayDensityOverride(density)
+                        // ETP standard was tested here: enabling the content
+                        // blocking database added several seconds to the first
+                        // paint on the DiLink-sized emulator, so it stays off.
                         .build()
                 ).also {
                     // Apply after init so Gecko propagates the dark scheme to
