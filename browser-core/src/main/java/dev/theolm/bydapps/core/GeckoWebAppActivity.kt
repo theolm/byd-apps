@@ -18,6 +18,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
+import dev.theolm.bydapps.core.session.SessionBridge
+import dev.theolm.bydapps.core.session.SessionSync
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
@@ -42,6 +44,12 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     protected abstract val startUrl: String
 
     /**
+     * Packages that may provide a signed-in session when this app is signed
+     * out. Empty when the app has no sibling.
+     */
+    protected open val partnerPackages: List<String> = emptyList()
+
+    /**
      * Page scale relative to the device density. Values above 1 render the
      * site larger; YouTube keeps 1.0 and YT Music overrides this with 1.2.
      */
@@ -49,6 +57,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
     private lateinit var mediaSessionCompat: MediaSessionCompat
     private var session: GeckoSession? = null
+    private var sessionSync: SessionSync? = null
     private var geckoMediaSession: MediaSession? = null
     private var lastMetadata: MediaSession.Metadata? = null
     private var lastPosition = 0.0
@@ -177,7 +186,25 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         val geckoView = GeckoView(this)
         geckoView.setSession(geckoSession)
         setContentView(geckoView)
-        geckoSession.loadUri(startUrl)
+
+        val bridge = SessionBridge.get(runtime)
+        bridge.start()
+        val sync = SessionSync(applicationContext, partnerPackages, bridge)
+        sessionSync = sync
+        sync.prepare(
+            onReady = {
+                if (geckoSession.isOpen) {
+                    geckoSession.loadUri(startUrl)
+                }
+            },
+            onLateImport = {
+                // A sibling session arrived after the page started loading;
+                // reload once so the site picks up the new cookies.
+                if (!isDestroyed && geckoSession.isOpen) {
+                    geckoSession.reload()
+                }
+            },
+        )
     }
 
     private fun setupMediaSession() {
@@ -326,6 +353,10 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // Export the signed-in cookies so the sibling app can log in without
+        // asking Google again. Safe to call on every stop: a signed-out app
+        // never overwrites the stored bundle.
+        sessionSync?.save()
         if (keepPlayingInBackground) {
             // GeckoView deactivates the session when its surface is hidden,
             // and the page treats that as a visibility change. Keep it active

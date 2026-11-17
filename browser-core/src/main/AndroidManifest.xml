@@ -5,12 +5,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Only apps signed with the same certificate may read the session
+        bundle. The name is resolved to the applicationId of the app that
+        includes this library.
+    -->
+    <permission
+        android:name="${applicationId}.permission.SESSION_SYNC"
+        android:protectionLevel="signature" />
+
     <application>
         <provider
             android:name="dev.theolm.bydapps.core.MediaArtworkProvider"
             android:authorities="${applicationId}.mediaartwork"
             android:exported="true"
             android:grantUriPermissions="true" />
+
+        <provider
+            android:name="dev.theolm.bydapps.core.session.SessionProvider"
+            android:authorities="${applicationId}.sessionsync"
+            android:exported="true"
+            android:permission="${applicationId}.permission.SESSION_SYNC" />
 
         <service
             android:name="dev.theolm.bydapps.core.MediaPlaybackService"
