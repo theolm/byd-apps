@@ -17,15 +17,16 @@ old `:core` module were removed.
 
 ```
 browser-core/   Shared GeckoWebAppActivity: GeckoView host, dark scheme,
-                MediaSession bridge, back handling
-apps/youtube/   Start URL, icon, theme and application ID
-apps/ytmusic/   Start URL, icon, theme and application ID
+                MediaSession bridge, back handling, session sharing
+apps/youtube/   Start URL, icon, theme, application ID, partner package
+apps/ytmusic/   Start URL, icon, theme, application ID, partner package
 tools/emu.sh    DiLink 3 emulator workbench
-docs/           Emulator and release documentation
+docs/           Emulator, release and session-sharing documentation
 ```
 
 `GeckoWebAppActivity` owns all browser behavior. An app module should only add
-its `startUrl`, resources and manifest entry unless the feature is app-specific.
+its `startUrl`, `partnerPackages`, resources and manifest entry unless the
+feature is app-specific.
 
 ## Build Commands
 
@@ -97,6 +98,31 @@ so play/next still reach the page. A session that is active with no media
 steals steering-wheel keys from the other app. Track playback state from
 `onPlay`/`onPause`; `MediaSession.isActive` only means the session exists, not
 that it is playing.
+
+## Session sharing
+
+The two packages keep separate Gecko profiles, so a Google sign-in in one app
+is invisible to the other. `browser-core` bridges the cookie jar between them:
+
+- `SessionBridge` installs the built-in extension in
+  `assets/web_extensions/session-bridge/`. This is the only way to read and
+  write cookies: GeckoView 160 removed cookies from `StorageController`. Keep
+  the `geckoViewAddons` and `nativeMessaging` permissions in its manifest;
+  without `geckoViewAddons` GeckoView routes native messaging to the desktop
+  path, which fails on Android.
+- `SessionSync` exports on `onStop` only when a Google auth cookie (`SID`,
+  `__Secure-1PSID`, `__Secure-3PSID`) is present, and imports only when the
+  local profile is signed out. Never import over an account that is already
+  signed in; it would switch accounts silently.
+- The bundle is written to `files/session/session-bundle.json` and shared
+  through `SessionProvider` at `content://<applicationId>.sessionsync`,
+  protected by the `signature`-level `<applicationId>.permission.SESSION_SYNC`.
+  The provider only reads the file and must never start Gecko.
+- A new app must list its siblings in `partnerPackages`, declare their
+  permissions and add a `<queries>` entry for each sibling package.
+- Never log cookie values; only counts and the bundle hash.
+- `docs/session-sharing.md` explains the flow and how to test it with a
+  synthetic bundle.
 
 ## Code Style
 

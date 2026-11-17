@@ -66,13 +66,16 @@ Each app keeps:
   and car-launcher metadata;
 - artwork published from the page's media metadata for launchers that support
   it;
+- a shared sign-in: once one app is signed in, the other restores the same
+  Google session on its next start (see
+  [docs/session-sharing.md](docs/session-sharing.md));
 - no custom fullscreen handling.
 
 ## Architecture
 
 ```text
 browser-core/       Shared GeckoView host, media session, foreground service,
-                    MediaBrowserService and artwork provider
+                    MediaBrowserService, artwork provider and session bridge
 apps/youtube/       YouTube BYD: start URL, icon and launcher
 apps/ytmusic/       YT Music BYD: start URL, icon and launcher
 tools/emu.sh        DiLink 3 emulator workbench
@@ -165,6 +168,10 @@ environment and versioning rules.
   configuration.
 - The apps depend on the current behavior of the YouTube and YT Music web apps;
   site changes may require updates.
+- Session sharing copies cookies between the two apps, so it needs both apps
+  signed with the same key. Google may still ask for a new sign-in, and a
+  session copied while signed in elsewhere is never used to replace an account
+  already signed in.
 
 ## License
 
