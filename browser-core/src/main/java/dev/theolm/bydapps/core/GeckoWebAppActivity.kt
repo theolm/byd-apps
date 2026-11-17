@@ -196,6 +196,12 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                     geckoMediaSession?.play()
                 }
 
+                override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                    if (mediaId == MediaPlaybackService.NOW_PLAYING_ID) {
+                        geckoMediaSession?.play()
+                    }
+                }
+
                 override fun onPause() {
                     // This is a user/steering-wheel pause; do not let the
                     // background keep-alive start playback again.
