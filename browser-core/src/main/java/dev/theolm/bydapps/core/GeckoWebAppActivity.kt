@@ -1,6 +1,7 @@
 package dev.theolm.bydapps.core
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
@@ -28,7 +29,12 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
     protected abstract val startUrl: String
 
-    private lateinit var runtime: GeckoRuntime
+    /**
+     * Page scale relative to the device density. Values above 1 render the
+     * site larger; YouTube keeps 1.0 and YT Music overrides this with 1.2.
+     */
+    protected open val contentScale: Float = 1f
+
     private lateinit var mediaSessionCompat: MediaSessionCompat
     private var session: GeckoSession? = null
     private var geckoMediaSession: MediaSession? = null
@@ -49,12 +55,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
         setupMediaSession()
 
-        // Reuse the process-wide runtime: create() throws if the Activity is
-        // recreated and a runtime already exists in this process.
-        runtime = GeckoRuntime.getDefault(applicationContext)
-        runtime.settings.setPreferredColorScheme(
-            GeckoRuntimeSettings.COLOR_SCHEME_DARK
-        )
+        val runtime = getOrCreateRuntime(applicationContext, contentScale)
 
         val settings = GeckoSessionSettings.Builder()
             .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
@@ -220,5 +221,36 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         session?.close()
         mediaSessionCompat.release()
         super.onDestroy()
+    }
+
+    private companion object {
+        @Volatile
+        private var sharedRuntime: GeckoRuntime? = null
+
+        /**
+         * The runtime must be created once per process: create() rejects a
+         * second instance, and the density override has to be set before
+         * initialization. Reusing it also survives Activity recreation.
+         */
+        fun getOrCreateRuntime(context: Context, contentScale: Float): GeckoRuntime {
+            sharedRuntime?.let { return it }
+            synchronized(this) {
+                sharedRuntime?.let { return it }
+                val density = context.resources.displayMetrics.density * contentScale
+                return GeckoRuntime.create(
+                    context,
+                    GeckoRuntimeSettings.Builder()
+                        .displayDensityOverride(density)
+                        .build()
+                ).also {
+                    // Apply after init so Gecko propagates the dark scheme to
+                    // already-loaded content; the builder alone left YouTube light.
+                    it.settings.setPreferredColorScheme(
+                        GeckoRuntimeSettings.COLOR_SCHEME_DARK
+                    )
+                    sharedRuntime = it
+                }
+            }
+        }
     }
 }
