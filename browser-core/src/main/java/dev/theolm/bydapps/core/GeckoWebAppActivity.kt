@@ -41,7 +41,18 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var lastMetadata: MediaSession.Metadata? = null
     private var lastPosition = 0.0
     private var isPlaying = false
+    private var keepPlayingInBackground = false
     private var canGoBack = false
+
+    private val keepAliveRunnable = Runnable {
+        if (!keepPlayingInBackground) return@Runnable
+        val activeSession = session ?: return@Runnable
+        if (!activeSession.isOpen) return@Runnable
+        activeSession.setActive(true)
+        if (!isPlaying) {
+            geckoMediaSession?.play()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +72,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
             .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
             .allowJavascript(true)
+            .suspendMediaWhenInactive(false)
             .build()
 
         val geckoSession = GeckoSession(settings)
@@ -155,6 +167,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 }
 
                 override fun onPause() {
+                    // This is a user/steering-wheel pause; do not let the
+                    // background keep-alive start playback again.
+                    keepPlayingInBackground = false
                     geckoMediaSession?.pause()
                 }
 
@@ -167,6 +182,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 }
 
                 override fun onStop() {
+                    keepPlayingInBackground = false
                     geckoMediaSession?.stop()
                 }
 
@@ -217,7 +233,45 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         )
     }
 
+    override fun onPause() {
+        super.onPause()
+        keepPlayingInBackground = isPlaying
+        if (keepPlayingInBackground) {
+            keepSessionActive()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (keepPlayingInBackground) {
+            // GeckoView deactivates the session when its surface is hidden,
+            // and the page treats that as a visibility change. Keep it active
+            // while media is playing so camera/app switches do not pause or
+            // reload the site.
+            keepSessionActive()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        keepPlayingInBackground = false
+        window.decorView.removeCallbacks(keepAliveRunnable)
+        session?.setActive(true)
+    }
+
+    /**
+     * The surface release can deactivate the session after onPause/onStop, so
+     * re-activate it once the window has settled and resume playback if the
+     * site paused on visibility change.
+     */
+    private fun keepSessionActive() {
+        session?.setActive(true)
+        window.decorView.removeCallbacks(keepAliveRunnable)
+        window.decorView.postDelayed(keepAliveRunnable, 750L)
+    }
+
     override fun onDestroy() {
+        window.decorView.removeCallbacks(keepAliveRunnable)
         session?.close()
         mediaSessionCompat.release()
         super.onDestroy()
