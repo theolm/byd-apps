@@ -1,15 +1,21 @@
 package dev.theolm.bydapps.core
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
@@ -43,6 +49,11 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var isPlaying = false
     private var keepPlayingInBackground = false
     private var canGoBack = false
+    private var playbackServiceStarted = false
+    private var notificationPermissionRequested = false
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     private val keepAliveRunnable = Runnable {
         if (!keepPlayingInBackground) return@Runnable
@@ -86,6 +97,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 geckoMediaSession = mediaSession
                 mediaSessionCompat.isActive = true
                 updateNativeState()
+                startPlaybackService()
             }
 
             override fun onDeactivated(session: GeckoSession, mediaSession: MediaSession) {
@@ -97,12 +109,14 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 isPlaying = false
                 mediaSessionCompat.isActive = false
                 updateNativeState()
+                stopPlaybackService()
             }
 
             override fun onPlay(session: GeckoSession, mediaSession: MediaSession) {
                 mediaSessionCompat.isActive = true
                 isPlaying = true
                 updateNativeState()
+                startPlaybackService()
             }
 
             override fun onPause(session: GeckoSession, mediaSession: MediaSession) {
@@ -113,6 +127,7 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             override fun onStop(session: GeckoSession, mediaSession: MediaSession) {
                 isPlaying = false
                 updateNativeState()
+                stopPlaybackService()
             }
 
             override fun onMetadata(
@@ -270,8 +285,48 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         window.decorView.postDelayed(keepAliveRunnable, 750L)
     }
 
+    private fun startPlaybackService() {
+        if (playbackServiceStarted) return
+        val intent = Intent(this, MediaPlaybackService::class.java)
+            .putExtra(
+                MediaPlaybackService.EXTRA_SESSION_TOKEN,
+                mediaSessionCompat.sessionToken
+            )
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            playbackServiceStarted = true
+        } catch (_: IllegalStateException) {
+            // Android 12+ can reject a foreground-service start from the
+            // background. Playback still has the Gecko keep-alive fallback.
+            playbackServiceStarted = false
+        }
+        ensureNotificationPermission()
+    }
+
+    private fun stopPlaybackService() {
+        if (!playbackServiceStarted) return
+        stopService(Intent(this, MediaPlaybackService::class.java))
+        playbackServiceStarted = false
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (notificationPermissionRequested) return
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        notificationPermissionRequested = true
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     override fun onDestroy() {
         window.decorView.removeCallbacks(keepAliveRunnable)
+        stopPlaybackService()
         session?.close()
         mediaSessionCompat.release()
         super.onDestroy()
