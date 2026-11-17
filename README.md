@@ -57,9 +57,12 @@ apps bundle GeckoView 160 and render the site's own layout.
 
 Each app keeps:
 
-- the site's natural layout, without a forced desktop/mobile override;
+- the site's own layout: YouTube keeps the mobile site and YT Music uses the
+  desktop site so the Up Next queue and transport controls stay visible;
 - a dark color scheme;
 - YouTube at **1.0** and YT Music at **1.2** content scale;
+- a native splash from launch until the first paint, plus YT Music's
+  `minimal-ui` display mode;
 - a native `MediaSession` that forwards steering-wheel
   next/previous/play/pause to the page;
 - a foreground media service and `MediaBrowserService` for background playback
@@ -69,7 +72,8 @@ Each app keeps:
 - a shared sign-in: once one app is signed in, the other restores the same
   Google session on its next start (see
   [docs/session-sharing.md](docs/session-sharing.md));
-- no custom fullscreen handling.
+- fullscreen requests declined, so the site's queue and transport controls stay
+  visible.
 
 ## Architecture
 
@@ -160,7 +164,8 @@ environment and versioning rules.
 
 - Google sign-in inside an embedded browser may be blocked by Google. The app
   cannot change that policy.
-- No custom fullscreen handling.
+- Fullscreen video is not supported. Fullscreen requests are declined so the
+  site's queue and transport controls stay visible.
 - The launcher media card depends on what the BYD launcher chooses to render.
   The apps expose `MediaSession`, `MediaBrowserService` and artwork, but the
   launcher may not show a card for every app.

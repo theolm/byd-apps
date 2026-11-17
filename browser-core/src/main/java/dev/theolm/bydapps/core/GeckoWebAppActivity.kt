@@ -6,12 +6,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +28,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import dev.theolm.bydapps.core.session.SessionBridge
 import dev.theolm.bydapps.core.session.SessionSync
+import org.json.JSONObject
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
@@ -55,6 +64,17 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
      */
     protected open val contentScale: Float = 1f
 
+    /**
+     * Display mode reported to the page through the `display-mode` media
+     * query. The default is browser mode; a site that ships a web app manifest
+     * can opt into [GeckoSessionSettings.DISPLAY_MODE_MINIMAL_UI] so it hides
+     * its own install prompts, even though the APK owns the window chrome.
+     */
+    protected open val displayMode: Int = GeckoSessionSettings.DISPLAY_MODE_BROWSER
+
+    /** User agent mode; desktop gives sites their full web layout. */
+    protected open val userAgentMode: Int = GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+
     private lateinit var mediaSessionCompat: MediaSessionCompat
     private var session: GeckoSession? = null
     private var sessionSync: SessionSync? = null
@@ -69,6 +89,12 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var artwork: Bitmap? = null
     private var artworkUri: String? = null
     private var artworkRequest = 0
+    private var fullScreen = false
+    private var splashView: View? = null
+    private var splashDismissed = false
+
+    /** Covers the GeckoView until the first paint so launch feels like an app. */
+    private val splashTimeout = Runnable { hideSplash() }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -89,7 +115,11 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (canGoBack) session?.goBack() else finish()
+                when {
+                    fullScreen -> session?.exitFullScreen()
+                    canGoBack -> session?.goBack()
+                    else -> finish()
+                }
             }
         })
 
@@ -98,8 +128,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         val runtime = getOrCreateRuntime(applicationContext, contentScale)
 
         val settings = GeckoSessionSettings.Builder()
-            .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+            .userAgentMode(userAgentMode)
             .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+            .displayMode(displayMode)
             .allowJavascript(true)
             .suspendMediaWhenInactive(false)
             .build()
@@ -108,6 +139,55 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         geckoSession.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
                 this@GeckoWebAppActivity.canGoBack = canGoBack
+            }
+        }
+        geckoSession.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onFirstContentfulPaint(session: GeckoSession) {
+                Log.d(TAG, "First contentful paint")
+                hideSplash()
+            }
+
+            override fun onWebAppManifest(session: GeckoSession, manifest: JSONObject) {
+                Log.d(
+                    TAG,
+                    "Web app manifest: name=${manifest.optString("name")}, " +
+                        "short_name=${manifest.optString("short_name")}, " +
+                        "display=${manifest.optString("display")}, " +
+                        "start_url=${manifest.optString("start_url")}, " +
+                        "theme_color=${manifest.optString("theme_color")}, " +
+                        "background_color=${manifest.optString("background_color")}"
+                )
+            }
+
+            override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
+                Log.d(TAG, "Fullscreen=$fullScreen")
+                this@GeckoWebAppActivity.fullScreen = fullScreen
+                // Some sites request fullscreen for playback. This wrapper has
+                // no fullscreen chrome, so that would hide the queue and the
+                // transport bar. Keep the normal page layout instead; the exit
+                // must wait until Gecko has committed the transition.
+                if (fullScreen) {
+                    window.decorView.postDelayed(
+                        { if (session.isOpen) session.exitFullScreen() },
+                        FULLSCREEN_EXIT_DELAY_MS
+                    )
+                }
+            }
+
+            override fun onCrash(session: GeckoSession) {
+                Log.e(TAG, "Content process crashed")
+                hideSplash()
+            }
+
+            override fun onKill(session: GeckoSession) {
+                Log.e(TAG, "Content process killed")
+                hideSplash()
+            }
+        }
+        geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                Log.d(TAG, "Page stop success=$success")
+                if (!success) hideSplash()
             }
         }
         geckoSession.mediaSessionDelegate = object : MediaSession.Delegate {
@@ -183,9 +263,14 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         geckoSession.open(runtime)
         session = geckoSession
 
-        val geckoView = GeckoView(this)
-        geckoView.setSession(geckoSession)
-        setContentView(geckoView)
+        val geckoView = GeckoView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            setSession(geckoSession)
+        }
+        setContentView(createContentView(geckoView))
+        if (!splashDismissed) {
+            window.decorView.postDelayed(splashTimeout, SPLASH_TIMEOUT_MS)
+        }
 
         val bridge = SessionBridge.get(runtime)
         bridge.start()
@@ -205,6 +290,81 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 }
             },
         )
+    }
+
+    /**
+     * Wraps the GeckoView in a black container and shows the app icon until
+     * the first paint. An installed PWA gets a similar splash from its web app
+     * manifest; this keeps the same feel while Gecko boots.
+     */
+    private fun createContentView(geckoView: GeckoView): View {
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
+        root.addView(
+            geckoView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        if (splashDismissed) return root
+
+        val iconSize = (SPLASH_ICON_DP * resources.displayMetrics.density).toInt()
+        val icon = ImageView(this).apply {
+            setImageDrawable(packageManager.getApplicationIcon(applicationInfo))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val label = TextView(this).apply {
+            text = packageManager.getApplicationLabel(applicationInfo)
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            gravity = Gravity.CENTER
+        }
+        val splash = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.BLACK)
+            // Consume taps while the page is loading; the splash goes away on
+            // the first paint or after the timeout.
+            isClickable = true
+            addView(icon, LinearLayout.LayoutParams(iconSize, iconSize))
+            addView(
+                label,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = (16 * resources.displayMetrics.density).toInt()
+                }
+            )
+        }
+        root.addView(
+            splash,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        splashView = splash
+        return root
+    }
+
+    private fun hideSplash() {
+        if (splashDismissed) return
+        splashDismissed = true
+        window.decorView.removeCallbacks(splashTimeout)
+        val splash = splashView ?: return
+        splashView = null
+        splash.animate()
+            .alpha(0f)
+            .setDuration(SPLASH_FADE_MS)
+            .withEndAction {
+                (splash.parent as? FrameLayout)?.removeView(splash)
+            }
+            .start()
     }
 
     private fun setupMediaSession() {
@@ -425,6 +585,8 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
 
     override fun onDestroy() {
         window.decorView.removeCallbacks(keepAliveRunnable)
+        window.decorView.removeCallbacks(splashTimeout)
+        splashView = null
         stopPlaybackService()
         session?.close()
         if (MediaSessionRegistry.token == mediaSessionCompat.sessionToken) {
@@ -437,6 +599,10 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private companion object {
         private const val TAG = "GeckoWebAppActivity"
         private const val ARTWORK_SIZE = 256
+        private const val SPLASH_ICON_DP = 128
+        private const val SPLASH_FADE_MS = 200L
+        private const val SPLASH_TIMEOUT_MS = 8_000L
+        private const val FULLSCREEN_EXIT_DELAY_MS = 1_000L
 
         @Volatile
         private var sharedRuntime: GeckoRuntime? = null

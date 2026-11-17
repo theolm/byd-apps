@@ -73,9 +73,13 @@ audio routing or steering-wheel mapping.
 
 - GeckoView is pinned in `gradle/libs.versions.toml`; the apps target Android 10
   (API 29) and only build `arm64-v8a`.
-- The page is rendered at 1x with the site's own layout. Do not add CSS/JS
-  injection to force zoom or themes unless the task explicitly requires it.
-- There is no fullscreen handling by design.
+- The page uses the site's own layout. YouTube keeps the mobile user agent;
+  YT Music uses the desktop user agent so its Up Next queue and transport bar
+  stay visible. Do not change either without testing the player layout, and do
+  not add CSS/JS injection to force zoom or themes unless the task requires it.
+- Fullscreen requests are declined: `onFullScreen` exits after the transition,
+  and the back key exits fullscreen if one slips through. There is no custom
+  fullscreen UI.
 - AGP 9.1's built-in Kotlin compiler (2.2) cannot read the Kotlin 2.4 metadata
   shipped by GeckoView 160. The modules apply the `kotlin-compose` plugin
   2.3.20 as a workaround, and `browser-core` keeps the Compose runtime on the
