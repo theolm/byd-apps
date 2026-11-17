@@ -5,8 +5,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -21,7 +23,11 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.Image
 import org.mozilla.geckoview.MediaSession
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 
 /**
  * Shared GeckoView activity for the YouTube and YT Music packages.
@@ -51,6 +57,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
     private var canGoBack = false
     private var playbackServiceStarted = false
     private var notificationPermissionRequested = false
+    private var artwork: Bitmap? = null
+    private var artworkUri: String? = null
+    private var artworkRequest = 0
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -105,6 +114,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                     geckoMediaSession = null
                     lastMetadata = null
                     lastPosition = 0.0
+                    artwork = null
+                    artworkUri = null
+                    artworkRequest++
                 }
                 isPlaying = false
                 mediaSessionCompat.isActive = false
@@ -136,6 +148,9 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
                 metadata: MediaSession.Metadata
             ) {
                 lastMetadata = metadata
+                artwork = null
+                artworkUri = null
+                loadArtwork(metadata.artwork)
                 updateNativeState()
             }
 
@@ -210,7 +225,46 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
             // app that is really playing.
             isActive = false
         }
+        MediaSessionRegistry.token = mediaSessionCompat.sessionToken
         updateNativeState()
+    }
+
+    private fun loadArtwork(image: Image?) {
+        val request = ++artworkRequest
+        if (image == null) {
+            artwork = null
+            return
+        }
+        image.getBitmap(ARTWORK_SIZE).accept({ bitmap ->
+            if (request != artworkRequest || bitmap == null) return@accept
+            runOnUiThread {
+                if (request != artworkRequest) return@runOnUiThread
+                publishArtwork(bitmap, request)
+            }
+        }, { throwable ->
+            Log.w(TAG, "Artwork load failed", throwable)
+        })
+    }
+
+    private fun publishArtwork(bitmap: Bitmap, request: Int) {
+        val file = File(cacheDir, MediaArtworkProvider.ARTWORK_FILE)
+        val written = try {
+            FileOutputStream(file).use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        } catch (error: IOException) {
+            Log.w(TAG, "Artwork save failed", error)
+            false
+        }
+
+        artwork = bitmap
+        artworkUri = if (written) {
+            "content://${packageName}${MediaArtworkProvider.AUTHORITY_SUFFIX}/current?v=$request"
+        } else {
+            null
+        }
+        updateNativeState()
+        Log.d(TAG, "Artwork loaded ${bitmap.width}x${bitmap.height}, uri=$artworkUri")
     }
 
     private fun updateNativeState() {
@@ -224,6 +278,14 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         }
         metadata?.album?.let {
             metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, it)
+        }
+        artwork?.let {
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+            artworkUri?.let { uri ->
+                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, uri)
+                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, uri)
+            }
         }
         mediaSessionCompat.setMetadata(metadataBuilder.build())
 
@@ -328,11 +390,17 @@ abstract class GeckoWebAppActivity : ComponentActivity() {
         window.decorView.removeCallbacks(keepAliveRunnable)
         stopPlaybackService()
         session?.close()
+        if (MediaSessionRegistry.token == mediaSessionCompat.sessionToken) {
+            MediaSessionRegistry.token = null
+        }
         mediaSessionCompat.release()
         super.onDestroy()
     }
 
     private companion object {
+        private const val TAG = "GeckoWebAppActivity"
+        private const val ARTWORK_SIZE = 256
+
         @Volatile
         private var sharedRuntime: GeckoRuntime? = null
 

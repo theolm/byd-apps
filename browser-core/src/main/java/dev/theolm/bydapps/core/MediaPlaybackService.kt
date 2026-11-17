@@ -4,28 +4,33 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.IBinder
+import android.os.Bundle
+import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.IntentCompat
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 
 /**
- * Keeps the app process alive while GeckoView has an active media session.
+ * Keeps the app process alive while GeckoView has an active media session and
+ * exposes the current session to car launchers through MediaBrowserService.
  *
  * The service does not own the player: GeckoView and the Activity keep the
- * playback. Its job is to hold a foreground-service priority and the mandatory
- * notification while the reverse camera or another app is in front.
+ * playback. Its job is to hold a foreground-service priority, publish the
+ * mandatory notification and provide a standard MediaBrowserService endpoint.
  */
-class MediaPlaybackService : Service() {
+class MediaPlaybackService : MediaBrowserServiceCompat() {
+
+    private var sessionTokenSet = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        setTokenIfNeeded(MediaSessionRegistry.token)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -35,12 +40,14 @@ class MediaPlaybackService : Service() {
                 EXTRA_SESSION_TOKEN,
                 MediaSessionCompat.Token::class.java
             )
-        }
+        } ?: MediaSessionRegistry.token
+
         if (token == null) {
             stopSelf()
             return START_NOT_STICKY
         }
 
+        setTokenIfNeeded(token)
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
@@ -48,6 +55,22 @@ class MediaPlaybackService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         )
         return START_NOT_STICKY
+    }
+
+    override fun onGetRoot(
+        clientPackageName: String,
+        clientUid: Int,
+        rootHints: Bundle?
+    ): BrowserRoot {
+        setTokenIfNeeded(MediaSessionRegistry.token)
+        return BrowserRoot(ROOT_ID, null)
+    }
+
+    override fun onLoadChildren(
+        parentId: String,
+        result: Result<MutableList<MediaBrowserCompat.MediaItem>>
+    ) {
+        result.sendResult(mutableListOf())
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -60,7 +83,11 @@ class MediaPlaybackService : Service() {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    private fun setTokenIfNeeded(token: MediaSessionCompat.Token?) {
+        if (token == null || sessionTokenSet) return
+        setSessionToken(token)
+        sessionTokenSet = true
+    }
 
     private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java)
@@ -106,7 +133,17 @@ class MediaPlaybackService : Service() {
 
     companion object {
         const val EXTRA_SESSION_TOKEN = "dev.theolm.bydapps.core.SESSION_TOKEN"
+        private const val ROOT_ID = "root"
         private const val CHANNEL_ID = "media_playback"
         private const val NOTIFICATION_ID = 1001
     }
+}
+
+/**
+ * Process-wide bridge between the Activity-owned MediaSessionCompat and the
+ * MediaBrowserService endpoint. Each app runs in its own process.
+ */
+internal object MediaSessionRegistry {
+    @Volatile
+    var token: MediaSessionCompat.Token? = null
 }
