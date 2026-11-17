@@ -1,7 +1,7 @@
 [versions]
 # App versioning - update these for all apps and tag the release with vX.Y.Z.
-versionCode = "1"
-versionName = "0.1.0"
+versionCode = "3"
+versionName = "0.1.1"
 
 agp = "9.1.0"
 coreKtx = "1.18.0"
